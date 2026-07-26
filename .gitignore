@@ -1,0 +1,33 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Nested repositories
+assets/**/.git/
+
+# n8n runtime data
+.n8n/
+runtime-data/
+execution-data/
+binary-data/
+
+# Databases and backups
+postgres-data/
+backups/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Local output
+test-results/
+logs/
+tmp/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
