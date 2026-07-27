@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:celes7a:schema:asset001:validation-error:1.0.0",
+  "title": "ASSET001 Validation Error",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "field",
+    "path",
+    "code",
+    "message",
+    "keyword",
+    "details",
+    "schema_path"
+  ],
+  "properties": {
+    "field": {
+      "type": ["string", "null"]
+    },
+    "path": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string",
+      "enum": [
+        "required",
+        "invalid_type",
+        "invalid_format",
+        "invalid_enum",
+        "consent_required",
+        "invalid_value",
+        "min_length",
+        "max_length",
+        "unexpected_field",
+        "schema_validation_failed"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "keyword": {
+      "type": "string"
+    },
+    "details": {
+      "type": "object"
+    },
+    "schema_path": {
+      "type": "string"
+    }
+  }
+}

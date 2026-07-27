@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:celes7a:schema:asset001:lead-submission:1.0.0",
+  "title": "ASSET001 Canonical Lead Submission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "full_name",
+    "email_normalized",
+    "message_sanitized",
+    "consent"
+  ],
+  "properties": {
+    "full_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "email_normalized": {
+      "type": "string",
+      "format": "email",
+      "maxLength": 254
+    },
+    "phone_normalized": {
+      "type": ["string", "null"],
+      "pattern": "^\\+[1-9]\\d{6,14}$"
+    },
+    "company": {
+      "type": ["string", "null"],
+      "maxLength": 160
+    },
+    "company_website": {
+      "type": ["string", "null"],
+      "format": "uri",
+      "pattern": "^https?://",
+      "maxLength": 2048
+    },
+    "service_requested": {
+      "type": ["string", "null"],
+      "enum": [
+        "api_integration",
+        "crm_automation",
+        "ai_workflow",
+        "data_integration",
+        "other",
+        null
+      ]
+    },
+    "message_sanitized": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 5000
+    },
+    "budget_band": {
+      "type": ["string", "null"],
+      "enum": [
+        "under_2500",
+        "2500_5000",
+        "5000_10000",
+        "over_10000",
+        "not_decided",
+        null
+      ]
+    },
+    "timeline_band": {
+      "type": ["string", "null"],
+      "enum": [
+        "immediately",
+        "within_one_month",
+        "one_to_three_months",
+        "later",
+        "not_decided",
+        null
+      ]
+    },
+    "country": {
+      "type": ["string", "null"],
+      "maxLength": 100
+    },
+    "consent": {
+      "const": true
+    }
+  }
+}

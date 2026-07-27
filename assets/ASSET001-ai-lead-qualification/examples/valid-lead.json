@@ -1,0 +1,15 @@
+{
+  "full_name": "  Jane   Smith  ",
+  "email": " JANE@EXAMPLE.TEST ",
+  "phone": "+1 (555) 010-2000",
+  "company": " Northwind   Services ",
+  "company_website": "HTTPS://Example.TEST/services#contact",
+  "service_requested": "API integration",
+  "message": "  Connect our website leads with HubSpot.  ",
+  "budget": "$5,000–$10,000",
+  "timeline": "Within one month",
+  "country": " United   States ",
+  "consent": [
+    "I consent to the processing of this demonstration enquiry"
+  ]
+}
