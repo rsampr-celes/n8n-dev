@@ -1,0 +1,278 @@
+{
+  "id": "ASSET001Idempotency01",
+  "name": "ASSET001 - Idempotency Guard",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ],
+      "id": "asset001-idempotency-trigger",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "asset001_runtime_config",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "key",
+              "condition": "eq",
+              "keyValue": "idempotency_enabled"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        520,
+        300
+      ],
+      "id": "asset001-subflow-read-config",
+      "name": "Read Idempotency Configuration",
+      "alwaysOutputData": true,
+      "notesInFlow": true,
+      "notes": "Reads idempotency_enabled from the asset001_runtime_config data table. Only Boolean false disables the guard."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const configRow = $input.first()?.json ?? {};\nconst workflowInput = $('When Executed by Another Workflow').first().json;\nconst rowFound = configRow.key === 'idempotency_enabled';\n\n// Fail safe: only an explicit Boolean false disables the guard.\nconst enabled = rowFound ? configRow.enabled !== false : true;\n\nreturn [{\n  json: {\n    ...workflowInput,\n    config: {\n      ...(workflowInput.config ?? {}),\n      idempotency_enabled: enabled,\n      idempotency_config_source: 'data_table',\n      idempotency_config_row_found: rowFound,\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ],
+      "id": "asset001-subflow-apply-config",
+      "name": "Apply Idempotency Configuration"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "asset001-subflow-is-enabled-condition",
+              "leftValue": "={{ $json.config.idempotency_enabled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        300
+      ],
+      "id": "asset001-subflow-is-enabled",
+      "name": "Is Idempotency Enabled?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map((item, index) => ({\n  json: {\n    ...item.json,\n    idempotency: {\n      enabled: false,\n      key: null,\n      claim_action: 'bypassed',\n      should_continue: true,\n      outcome: 'continue',\n    },\n  },\n  pairedItem: { item: index },\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        440
+      ],
+      "id": "asset001-subflow-bypass",
+      "name": "Bypass Idempotency"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { createHash } = require('crypto');\n\nfunction stableValue(value) {\n  if (value === undefined || value === null) return '';\n  return String(value).trim();\n}\n\nreturn $input.all().map((item, index) => {\n  const payload = item.json;\n  const email = stableValue(payload.lead?.email_normalized).toLowerCase();\n  const phone = stableValue(payload.lead?.phone_normalized);\n  const submissionReference = stableValue(payload.context?.submission_reference);\n  const source = `${email}|${phone}|${submissionReference}`;\n  const key = createHash('sha256').update(source, 'utf8').digest('hex');\n\n  return {\n    json: {\n      ...payload,\n      idempotency: {\n        key,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        220
+      ],
+      "id": "asset001-subflow-generate-key",
+      "name": "Generate Idempotency Key"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO workflow_audit.idempotency_records AS existing\n  (idempotency_key, correlation_id, status)\nVALUES ($1, $2::uuid, 'processing')\nON CONFLICT (idempotency_key) DO UPDATE\nSET updated_at = existing.updated_at\nRETURNING\n  CASE WHEN xmax = 0 THEN 'claimed' ELSE status END AS claim_action,\n  idempotency_key,\n  correlation_id AS stored_correlation_id,\n  status AS stored_status,\n  result_json AS previous_result,\n  error_json AS previous_error,\n  $3::jsonb AS workflow_payload;",
+        "options": {
+          "queryReplacement": "={{ [$json.idempotency.key, $json.context.correlation_id, $json] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1560,
+        220
+      ],
+      "id": "asset001-subflow-claim-key",
+      "name": "Claim Idempotency Key",
+      "credentials": {
+        "postgres": {
+          "id": "asset001-audit-postgres",
+          "name": "ASSET001 Audit PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map((item, index) => {\n  const claim = item.json;\n  const payload = claim.workflow_payload;\n\n  if (!payload || typeof payload !== 'object') {\n    throw new Error('Idempotency claim did not return the workflow payload');\n  }\n\n  return {\n    json: {\n      ...payload,\n      idempotency: {\n        ...payload.idempotency,\n        claim_action: claim.claim_action,\n        stored_correlation_id: claim.stored_correlation_id,\n        stored_status: claim.stored_status,\n        previous_result: claim.previous_result ?? null,\n        previous_error: claim.previous_error ?? null,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        220
+      ],
+      "id": "asset001-subflow-restore-context",
+      "name": "Restore Idempotency Context"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const OUTCOMES = {\n  claimed: 'continue',\n  completed: 'return_previous_result',\n  processing: 'accepted_in_progress',\n  failed: 'authorized_safe_replay_required',\n};\n\nreturn $input.all().map((item, index) => {\n  const payload = item.json;\n  const claimAction = payload.idempotency?.claim_action;\n  const outcome = OUTCOMES[claimAction];\n\n  if (!outcome) {\n    throw new Error(`Unsupported idempotency claim action: ${claimAction}`);\n  }\n\n  return {\n    json: {\n      ...payload,\n      idempotency: {\n        ...payload.idempotency,\n        enabled: true,\n        should_continue: claimAction === 'claimed',\n        outcome,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        220
+      ],
+      "id": "asset001-subflow-finalize-result",
+      "name": "Finalize Idempotency Result"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Read Idempotency Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Idempotency Configuration": {
+      "main": [
+        [
+          {
+            "node": "Apply Idempotency Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Idempotency Configuration": {
+      "main": [
+        [
+          {
+            "node": "Is Idempotency Enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Idempotency Enabled?": {
+      "main": [
+        [
+          {
+            "node": "Generate Idempotency Key",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bypass Idempotency",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Idempotency Key": {
+      "main": [
+        [
+          {
+            "node": "Claim Idempotency Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Idempotency Key": {
+      "main": [
+        [
+          {
+            "node": "Restore Idempotency Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Idempotency Context": {
+      "main": [
+        [
+          {
+            "node": "Finalize Idempotency Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Kiev",
+    "callerPolicy": "workflowsFromAList",
+    "callerIds": "ASSET001Form01"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}

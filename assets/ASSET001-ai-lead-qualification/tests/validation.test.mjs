@@ -13,6 +13,9 @@ const assetDirectory = path.resolve(testDirectory, '..');
 const workflow = JSON.parse(
   fs.readFileSync(path.join(assetDirectory, 'workflows', 'ASSET001-website-lead-form.json'), 'utf8'),
 );
+const idempotencyWorkflow = JSON.parse(
+  fs.readFileSync(path.join(assetDirectory, 'workflows', 'ASSET001-idempotency-guard.json'), 'utf8'),
+);
 const leadSchema = JSON.parse(
   fs.readFileSync(path.join(assetDirectory, 'schemas', 'lead-submission.schema.json'), 'utf8'),
 );
@@ -26,6 +29,40 @@ const validInput = JSON.parse(
 const codeNode = workflow.nodes.find((node) => node.name === 'Normalize and Validate Lead');
 assert.ok(codeNode, 'Normalize and Validate Lead node is missing');
 const executeCodeNode = new Function('require', '$input', codeNode.parameters.jsCode);
+const idempotencyNode = idempotencyWorkflow.nodes.find(
+  (node) => node.name === 'Generate Idempotency Key',
+);
+assert.ok(idempotencyNode, 'Generate Idempotency Key node is missing');
+const executeIdempotencyNode = new Function(
+  'require',
+  '$input',
+  idempotencyNode.parameters.jsCode,
+);
+const finalizeIdempotencyNode = idempotencyWorkflow.nodes.find(
+  (node) => node.name === 'Finalize Idempotency Result',
+);
+assert.ok(finalizeIdempotencyNode, 'Finalize Idempotency Result node is missing');
+const executeFinalizeIdempotencyNode = new Function(
+  '$input',
+  finalizeIdempotencyNode.parameters.jsCode,
+);
+const bypassIdempotencyNode = idempotencyWorkflow.nodes.find(
+  (node) => node.name === 'Bypass Idempotency',
+);
+assert.ok(bypassIdempotencyNode, 'Bypass Idempotency node is missing');
+const executeBypassIdempotencyNode = new Function(
+  '$input',
+  bypassIdempotencyNode.parameters.jsCode,
+);
+const applyIdempotencyConfigNode = idempotencyWorkflow.nodes.find(
+  (node) => node.name === 'Apply Idempotency Configuration',
+);
+assert.ok(applyIdempotencyConfigNode, 'Apply Idempotency Configuration node is missing');
+const executeApplyIdempotencyConfigNode = new Function(
+  '$input',
+  '$',
+  applyIdempotencyConfigNode.parameters.jsCode,
+);
 const runtimeRequire = (specifier) => require(
   specifier
     .replace(/^asset001-ajv\//, 'ajv/')
@@ -52,6 +89,22 @@ function run(raw) {
 
 function codes(result) {
   return result.validation.errors.map((error) => error.code);
+}
+
+function generateIdempotencyKey(payload) {
+  return executeIdempotencyNode(runtimeRequire, {
+    all: () => [{ json: payload }],
+  })[0].json;
+}
+
+function applyIdempotencyConfig(configRow, payload) {
+  return executeApplyIdempotencyConfigNode(
+    { first: () => ({ json: configRow }) },
+    (nodeName) => {
+      assert.equal(nodeName, 'When Executed by Another Workflow');
+      return { first: () => ({ json: payload }) };
+    },
+  )[0].json;
 }
 
 test('V01 complete valid lead is normalized and valid', () => {
@@ -212,4 +265,141 @@ test('operational errors never copy submitted values', () => {
   input.email = sensitiveValue;
   const serializedErrors = JSON.stringify(run(input).validation.errors);
   assert.equal(serializedErrors.includes(sensitiveValue), false);
+});
+
+test('I01 idempotency key uses the documented normalized source', () => {
+  const normalized = run({
+    ...clone(validInput),
+    submission_reference: ' FORM-001 ',
+  });
+  const result = generateIdempotencyKey(normalized);
+
+  assert.equal(
+    result.idempotency.key,
+    '5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e',
+  );
+});
+
+test('I02 repeated normalized submission produces the same key', () => {
+  const first = generateIdempotencyKey(run(clone(validInput)));
+  const second = generateIdempotencyKey(run(clone(validInput)));
+
+  assert.equal(first.idempotency.key, second.idempotency.key);
+  assert.match(first.idempotency.key, /^[0-9a-f]{64}$/);
+});
+
+test('I03 submission reference separates otherwise identical submissions', () => {
+  const first = run({ ...clone(validInput), submission_reference: 'FORM-001' });
+  const second = run({ ...clone(validInput), submission_reference: 'FORM-002' });
+
+  assert.notEqual(
+    generateIdempotencyKey(first).idempotency.key,
+    generateIdempotencyKey(second).idempotency.key,
+  );
+});
+
+test('I04 claim happens before qualification and handles every stored state', () => {
+  const claimNode = idempotencyWorkflow.nodes.find(
+    (node) => node.name === 'Claim Idempotency Key',
+  );
+  assert.ok(claimNode);
+  assert.match(claimNode.parameters.query, /ON CONFLICT \(idempotency_key\)/);
+  assert.match(claimNode.parameters.query, /CASE WHEN xmax = 0 THEN 'claimed'/);
+
+  assert.equal(
+    workflow.nodes.some((node) => node.type === 'n8n-nodes-base.postgres'),
+    false,
+  );
+  assert.equal(
+    workflow.nodes.some((node) => node.name === 'Generate Idempotency Key'),
+    false,
+  );
+  assert.ok(workflow.nodes.some((node) => node.name === 'Execute Idempotency Guard'));
+  assert.equal(idempotencyWorkflow.settings.callerPolicy, 'workflowsFromAList');
+  assert.equal(idempotencyWorkflow.settings.callerIds, workflow.id);
+});
+
+test('I05 Data Table configuration is contained in the sub-workflow', () => {
+  const configurationNode = idempotencyWorkflow.nodes.find(
+    (node) => node.name === 'Read Idempotency Configuration',
+  );
+  assert.equal(configurationNode.type, 'n8n-nodes-base.dataTable');
+  assert.deepEqual(configurationNode.parameters.dataTableId, {
+    __rl: true,
+    value: 'asset001_runtime_config',
+    mode: 'name',
+  });
+  assert.equal(configurationNode.parameters.filters.conditions[0].keyName, 'key');
+  assert.equal(
+    configurationNode.parameters.filters.conditions[0].keyValue,
+    'idempotency_enabled',
+  );
+  assert.equal(configurationNode.alwaysOutputData, true);
+  assert.equal(
+    workflow.nodes.some((node) => node.type === 'n8n-nodes-base.dataTable'),
+    false,
+  );
+  assert.equal(
+    idempotencyWorkflow.connections['Is Idempotency Enabled?'].main[0][0].node,
+    'Generate Idempotency Key',
+  );
+  assert.equal(
+    idempotencyWorkflow.connections['Is Idempotency Enabled?'].main[1][0].node,
+    'Bypass Idempotency',
+  );
+});
+
+test('I06 Data Table false bypasses idempotency and continues', () => {
+  const payload = run(clone(validInput));
+  const configured = applyIdempotencyConfig({
+    key: 'idempotency_enabled',
+    enabled: false,
+  }, payload);
+  const result = executeBypassIdempotencyNode({
+    all: () => [{ json: configured }],
+  })[0].json;
+
+  assert.equal(configured.config.idempotency_enabled, false);
+  assert.deepEqual(result.idempotency, {
+    enabled: false,
+    key: null,
+    claim_action: 'bypassed',
+    should_continue: true,
+    outcome: 'continue',
+  });
+});
+
+test('I07 missing Data Table row fails safe with idempotency enabled', () => {
+  const payload = run(clone(validInput));
+  const configured = applyIdempotencyConfig({}, payload);
+
+  assert.equal(configured.config.idempotency_enabled, true);
+  assert.equal(configured.config.idempotency_config_source, 'data_table');
+  assert.equal(configured.config.idempotency_config_row_found, false);
+});
+
+test('I08 sub-workflow maps every stored state to a parent decision', () => {
+  const expected = {
+    claimed: [true, 'continue'],
+    completed: [false, 'return_previous_result'],
+    processing: [false, 'accepted_in_progress'],
+    failed: [false, 'authorized_safe_replay_required'],
+  };
+
+  for (const [claimAction, [shouldContinue, outcome]] of Object.entries(expected)) {
+    const result = executeFinalizeIdempotencyNode({
+      all: () => [{
+        json: {
+          idempotency: {
+            key: 'a'.repeat(64),
+            claim_action: claimAction,
+          },
+        },
+      }],
+    })[0].json;
+
+    assert.equal(result.idempotency.enabled, true);
+    assert.equal(result.idempotency.should_continue, shouldContinue);
+    assert.equal(result.idempotency.outcome, outcome);
+  }
 });

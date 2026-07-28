@@ -200,14 +200,17 @@ function mapError(error) {
 }
 
 return $input.all().map((item, index) => {
-  const lead = normalizeLead(item.json);
+  const raw = item.json;
+  const lead = normalizeLead(raw);
   const isValid = validateLead(lead);
+  const submissionReference = optionalText(raw.submission_reference);
 
   return {
     json: {
       context: {
         correlation_id: randomUUID(),
         received_at: new Date().toISOString(),
+        submission_reference: submissionReference,
         source: 'n8n_form',
         schema: 'lead-submission',
         schema_version: SCHEMA_VERSION,

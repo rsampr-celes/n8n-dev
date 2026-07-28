@@ -1,0 +1,362 @@
+{
+  "info": {
+    "_postman_id": "f2fb1e2d-2bb1-4c50-8243-71141125bd7d",
+    "name": "ASSET001 - Website Lead Form",
+    "description": "Tests the published ASSET001 n8n Form Trigger. Requests use multipart/form-data and a browser-like User-Agent because the trigger's Ignore Bots option rejects Postman's default User-Agent. A 200 response means the form was accepted; inspect the n8n execution to confirm the workflow branch.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const configuredBaseUrl = pm.variables.replaceIn('{{baseUrl}}');",
+          "pm.variables.set('resolvedBaseUrl', configuredBaseUrl.replace(/\\/+$/, ''));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5681",
+      "type": "string"
+    },
+    {
+      "key": "formPath",
+      "value": "/form/asset001-lead-qualification",
+      "type": "string"
+    },
+    {
+      "key": "resolvedBaseUrl",
+      "value": "http://localhost:5681",
+      "type": "string"
+    },
+    {
+      "key": "idempotencyEmail",
+      "value": "postman.idempotency@example.test",
+      "type": "string"
+    },
+    {
+      "key": "idempotencyPhone",
+      "value": "+15550102130",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Create New Idempotency Claim",
+      "description": "Generates a unique email before sending. With idempotency enabled, this should create a new processing claim and continue qualification.",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const runId = Date.now();",
+              "pm.collectionVariables.set('idempotencyEmail', `postman.idempotency.${runId}@example.test`);",
+              "console.log(`Idempotency test email: ${pm.collectionVariables.get('idempotencyEmail')}`);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Form endpoint returns HTTP 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('n8n accepted the form submission', function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.status).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "User-Agent",
+            "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "field-0",
+              "value": "Postman Idempotency Test",
+              "type": "text"
+            },
+            {
+              "key": "field-1",
+              "value": "{{idempotencyEmail}}",
+              "type": "text"
+            },
+            {
+              "key": "field-2",
+              "value": "{{idempotencyPhone}}",
+              "type": "text"
+            },
+            {
+              "key": "field-3",
+              "value": "Postman Synthetic Company",
+              "type": "text"
+            },
+            {
+              "key": "field-4",
+              "value": "https://example.test",
+              "type": "text"
+            },
+            {
+              "key": "field-5",
+              "value": "AI workflow",
+              "type": "text"
+            },
+            {
+              "key": "field-6",
+              "value": "Create a new idempotency claim from the Postman collection.",
+              "type": "text"
+            },
+            {
+              "key": "field-7",
+              "value": "Not decided",
+              "type": "text"
+            },
+            {
+              "key": "field-8",
+              "value": "Within one month",
+              "type": "text"
+            },
+            {
+              "key": "field-9",
+              "value": "United States",
+              "type": "text"
+            },
+            {
+              "key": "field-10",
+              "value": "[\"I consent to the processing of this demonstration enquiry\"]",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{resolvedBaseUrl}}{{formPath}}",
+          "host": [
+            "{{resolvedBaseUrl}}"
+          ],
+          "path": [
+            "{{formPath}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "02 - Replay Existing Processing Claim",
+      "description": "Reuses the email and phone generated by request 01. Run this immediately after request 01 to exercise the existing processing-claim path.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Form endpoint returns HTTP 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('n8n accepted the replay submission', function () {",
+              "  const response = pm.response.json();",
+              "  pm.expect(response.status).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "User-Agent",
+            "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "field-0",
+              "value": "Postman Idempotency Replay",
+              "type": "text"
+            },
+            {
+              "key": "field-1",
+              "value": "{{idempotencyEmail}}",
+              "type": "text"
+            },
+            {
+              "key": "field-2",
+              "value": "{{idempotencyPhone}}",
+              "type": "text"
+            },
+            {
+              "key": "field-3",
+              "value": "Postman Synthetic Company",
+              "type": "text"
+            },
+            {
+              "key": "field-4",
+              "value": "https://example.test",
+              "type": "text"
+            },
+            {
+              "key": "field-5",
+              "value": "AI workflow",
+              "type": "text"
+            },
+            {
+              "key": "field-6",
+              "value": "Replay the same idempotency claim from the Postman collection.",
+              "type": "text"
+            },
+            {
+              "key": "field-7",
+              "value": "Not decided",
+              "type": "text"
+            },
+            {
+              "key": "field-8",
+              "value": "Within one month",
+              "type": "text"
+            },
+            {
+              "key": "field-9",
+              "value": "United States",
+              "type": "text"
+            },
+            {
+              "key": "field-10",
+              "value": "[\"I consent to the processing of this demonstration enquiry\"]",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{resolvedBaseUrl}}{{formPath}}",
+          "host": [
+            "{{resolvedBaseUrl}}"
+          ],
+          "path": [
+            "{{formPath}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "03 - Invalid Lead Validation",
+      "description": "Sends an invalid email and no consent. The Form Trigger still responds when it accepts the request; inspect the n8n execution and confirm it ends at Record Validation Failure.",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Form endpoint accepted the negative test', function () {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().status).to.eql(200);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "User-Agent",
+            "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "field-0",
+              "value": "Postman Invalid Test",
+              "type": "text"
+            },
+            {
+              "key": "field-1",
+              "value": "not-an-email",
+              "type": "text"
+            },
+            {
+              "key": "field-2",
+              "value": "invalid-phone",
+              "type": "text"
+            },
+            {
+              "key": "field-3",
+              "value": "",
+              "type": "text"
+            },
+            {
+              "key": "field-4",
+              "value": "not-a-url",
+              "type": "text"
+            },
+            {
+              "key": "field-5",
+              "value": "AI workflow",
+              "type": "text"
+            },
+            {
+              "key": "field-6",
+              "value": "Negative validation test from Postman.",
+              "type": "text"
+            },
+            {
+              "key": "field-7",
+              "value": "Not decided",
+              "type": "text"
+            },
+            {
+              "key": "field-8",
+              "value": "Within one month",
+              "type": "text"
+            },
+            {
+              "key": "field-9",
+              "value": "United States",
+              "type": "text"
+            },
+            {
+              "key": "field-10",
+              "value": "[]",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "{{resolvedBaseUrl}}{{formPath}}",
+          "host": [
+            "{{resolvedBaseUrl}}"
+          ],
+          "path": [
+            "{{formPath}}"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
