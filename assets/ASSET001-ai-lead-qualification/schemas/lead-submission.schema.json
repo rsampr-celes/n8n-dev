@@ -1,17 +1,23 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "urn:celes7a:schema:asset001:lead-submission:1.0.0",
+  "$id": "urn:celes7a:schema:asset001:lead-submission:2.0.0",
   "title": "ASSET001 Canonical Lead Submission",
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "full_name",
+    "first_name",
+    "last_name",
     "email_normalized",
     "message_sanitized",
     "consent"
   ],
   "properties": {
-    "full_name": {
+    "first_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "last_name": {
       "type": "string",
       "minLength": 1,
       "maxLength": 120

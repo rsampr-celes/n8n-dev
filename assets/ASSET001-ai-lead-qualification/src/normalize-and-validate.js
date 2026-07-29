@@ -5,7 +5,7 @@ const { randomUUID } = require('crypto');
 // dynamic code generation inside the sandbox.
 /*__AJV_STANDALONE_VALIDATOR__*/
 
-const SCHEMA_VERSION = '1.0.0';
+const SCHEMA_VERSION = '2.0.0';
 const CONSENT_TEXT = 'I consent to the processing of this demonstration enquiry';
 
 const SERVICE_MAP = {
@@ -33,7 +33,8 @@ const TIMELINE_MAP = {
 };
 
 const FIELD_LABELS = {
-  full_name: 'Full name',
+  first_name: 'First name',
+  last_name: 'Last name',
   email_normalized: 'Email',
   phone_normalized: 'Phone',
   company: 'Company',
@@ -111,7 +112,8 @@ function normalizeLead(raw) {
     country: optionalText(raw.country),
   };
 
-  if (!isBlank(raw.full_name)) lead.full_name = normalizeText(raw.full_name);
+  if (!isBlank(raw.first_name)) lead.first_name = normalizeText(raw.first_name);
+  if (!isBlank(raw.last_name)) lead.last_name = normalizeText(raw.last_name);
   if (!isBlank(raw.email)) lead.email_normalized = String(raw.email).trim().toLowerCase();
 
   const message = normalizeMessage(raw.message);

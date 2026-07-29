@@ -7,8 +7,8 @@ the code that is imported into n8n.
 | ID | Scenario | Expected |
 | --- | --- | --- |
 | V01 | Complete valid lead | Valid canonical lead |
-| V02 | Missing full name | `required` |
-| V03 | Blank full name | `required` |
+| V02 | Missing first name | `required` |
+| V03 | Blank last name | `required` |
 | V04 | Invalid email | `invalid_format` |
 | V05 | Email over 254 characters | `max_length` |
 | V06 | Consent absent | `consent_required` |

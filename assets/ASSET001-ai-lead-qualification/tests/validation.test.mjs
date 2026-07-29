@@ -107,26 +107,45 @@ function applyIdempotencyConfig(configRow, payload) {
   )[0].json;
 }
 
+test('form exposes separate required first-name and last-name fields', () => {
+  const formNode = workflow.nodes.find((node) => node.name === 'Website Lead Form');
+  const fields = formNode.parameters.formFields.values;
+
+  assert.deepEqual(
+    fields.slice(0, 2).map(({ fieldName, fieldLabel, requiredField }) => ({
+      fieldName,
+      fieldLabel,
+      requiredField,
+    })),
+    [
+      { fieldName: 'first_name', fieldLabel: 'First name', requiredField: true },
+      { fieldName: 'last_name', fieldLabel: 'Last name', requiredField: true },
+    ],
+  );
+  assert.equal(fields.some((field) => field.fieldName === 'full_name'), false);
+});
+
 test('V01 complete valid lead is normalized and valid', () => {
   const result = run(clone(validInput));
   assert.equal(result.validation.is_valid, true);
   assert.deepEqual(result.validation.errors, []);
-  assert.equal(result.lead.full_name, 'Jane Smith');
+  assert.equal(result.lead.first_name, 'Jane');
+  assert.equal(result.lead.last_name, 'Smith');
   assert.equal(result.lead.email_normalized, 'jane@example.test');
   assert.equal(result.lead.phone_normalized, '+15550102000');
   assert.equal(result.lead.company_website, 'https://example.test/services');
-  assert.equal(result.context.schema_version, '1.0.0');
+  assert.equal(result.context.schema_version, '2.0.0');
 });
 
-test('V02 missing full name returns required', () => {
+test('V02 missing first name returns required', () => {
   const input = clone(validInput);
-  delete input.full_name;
+  delete input.first_name;
   assert.ok(codes(run(input)).includes('required'));
 });
 
-test('V03 blank full name returns required', () => {
+test('V03 blank last name returns required', () => {
   const input = clone(validInput);
-  input.full_name = '   ';
+  input.last_name = '   ';
   assert.ok(codes(run(input)).includes('required'));
 });
 
@@ -234,7 +253,8 @@ test('V17 blank optional fields become null and remain valid', () => {
 
 test('V18 multiple invalid fields return all errors', () => {
   const result = run({
-    full_name: ' ',
+    first_name: ' ',
+    last_name: ' ',
     email: 'invalid',
     phone: '123',
     message: ' ',

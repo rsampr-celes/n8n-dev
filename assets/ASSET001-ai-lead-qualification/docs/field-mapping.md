@@ -15,7 +15,8 @@ complete preceding payload unless every field is required by the next stage.
 
 | FormItem | Form label | Type | Required | Normalized output | Normalize rule | Blank handling | Schema validation |
 |---|---|---|---:|---|---|---|---|
-| `full_name` | Full name | text | Yes | `lead.full_name` | Trim and collapse whitespace runs. | Omit. | Required string; length 1–120. |
+| `first_name` | First name | text | Yes | `lead.first_name` | Trim and collapse whitespace runs. | Omit. | Required string; length 1–120. |
+| `last_name` | Last name | text | Yes | `lead.last_name` | Trim and collapse whitespace runs. | Omit. | Required string; length 1–120. |
 | `email` | Work email | email | Yes | `lead.email_normalized` | Trim and lowercase. | Omit. | Required email string; maximum 254 characters. |
 | `phone` | Phone number | text | No | `lead.phone_normalized` | Trim; remove whitespace, parentheses, periods, and hyphens. | `null` | String or `null`; must match `^\+[1-9]\d{6,14}$`. |
 | `company` | Company | text | No | `lead.company` | Trim and collapse whitespace runs. | `null` | String or `null`; maximum 160 characters. |
@@ -83,7 +84,8 @@ Source:
 
 ```json
 {
-  "full_name": "  Jane   Smith  ",
+  "first_name": "  Jane  ",
+  "last_name": "  Smith  ",
   "email": " JANE@EXAMPLE.TEST ",
   "phone": "+1 (555) 010-2000",
   "company": " Northwind   Services ",
@@ -110,7 +112,7 @@ Destination:
     "submission_reference": "FORM-001",
     "source": "n8n_form",
     "schema": "lead-submission",
-    "schema_version": "1.0.0"
+    "schema_version": "2.0.0"
   },
   "lead": {
     "phone_normalized": "+15550102000",
@@ -120,7 +122,8 @@ Destination:
     "budget_band": "5000_10000",
     "timeline_band": "within_one_month",
     "country": "United States",
-    "full_name": "Jane Smith",
+    "first_name": "Jane",
+    "last_name": "Smith",
     "email_normalized": "jane@example.test",
     "message_sanitized": "Connect our website leads with HubSpot.",
     "consent": true
@@ -146,7 +149,7 @@ Sources:
       "submission_reference": "FORM-001",
       "source": "n8n_form",
       "schema": "lead-submission",
-      "schema_version": "1.0.0"
+      "schema_version": "2.0.0"
     },
     "lead": {
       "phone_normalized": "+15550102000",
@@ -156,7 +159,8 @@ Sources:
       "budget_band": "5000_10000",
       "timeline_band": "within_one_month",
       "country": "United States",
-      "full_name": "Jane Smith",
+      "first_name": "Jane",
+      "last_name": "Smith",
       "email_normalized": "jane@example.test",
       "message_sanitized": "Connect our website leads with HubSpot.",
       "consent": true

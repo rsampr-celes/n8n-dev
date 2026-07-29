@@ -1,5 +1,6 @@
 {
-  "full_name": "  Jane   Smith  ",
+  "first_name": "  Jane  ",
+  "last_name": "  Smith  ",
   "email": " JANE@EXAMPLE.TEST ",
   "phone": "+1 (555) 010-2000",
   "company": " Northwind   Services ",
