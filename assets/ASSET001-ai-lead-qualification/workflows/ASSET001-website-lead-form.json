@@ -295,11 +295,55 @@
       "name": "Continue After Idempotency?"
     },
     {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const normalizedInput = $('Normalize and Validate Lead').first().json;\nconst idempotencyResult = $input.first().json.idempotency;\n\nreturn [{\n  json: {\n    ...normalizedInput,\n    idempotency: idempotencyResult,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        140
+      ],
+      "id": "asset001-prepare-hubspot-match-input",
+      "name": "Prepare HubSpot Match Input"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "ASSET001HubSpotMatch01",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "mode": "once",
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1820,
+        140
+      ],
+      "id": "asset001-execute-hubspot-match-subflow",
+      "name": "Execute HubSpot Contact Match"
+    },
+    {
       "parameters": {},
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1560,
+        2080,
         140
       ],
       "id": "asset001-valid-placeholder",
@@ -385,7 +429,7 @@
       "main": [
         [
           {
-            "node": "Continue Qualification",
+            "node": "Prepare HubSpot Match Input",
             "type": "main",
             "index": 0
           }
@@ -393,6 +437,28 @@
         [
           {
             "node": "Duplicate Submission Handled",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare HubSpot Match Input": {
+      "main": [
+        [
+          {
+            "node": "Execute HubSpot Contact Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute HubSpot Contact Match": {
+      "main": [
+        [
+          {
+            "node": "Continue Qualification",
             "type": "main",
             "index": 0
           }

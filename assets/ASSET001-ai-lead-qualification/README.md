@@ -37,6 +37,29 @@ qualification:
 
 No AI or CRM node can currently receive an invalid lead.
 
+A separate **HubSpot Contact Match** sub-workflow now implements the CRM lookup
+boundary:
+
+- It receives the normalized workflow JSON without re-validating it.
+- It searches contacts by exact normalized email.
+- It searches the standard HubSpot `phone` property only when the email search
+  returns no contacts and the normalized input contains a phone.
+- It retrieves at most two results from either search, which distinguishes no
+  match, a unique match, and an ambiguous match without loading unnecessary
+  contacts.
+- It appends a deterministic `crm_match` object containing the `create`,
+  `update`, or `review` decision to the unchanged normalized input.
+
+Validation inside the sub-workflow, audit writes, retries, and a centralized
+error handler are intentionally deferred. A HubSpot node failure therefore
+fails the sub-workflow execution at this stage.
+
+The main workflow calls this sub-workflow after a new idempotency claim.
+**Prepare HubSpot Match Input** restores the normalized lead and combines it
+with the idempotency result, **Execute HubSpot Contact Match** waits for the
+matching decision, and the resulting payload continues through the existing
+**Continue Qualification** boundary.
+
 The Postgres node expects an n8n credential named
 `ASSET001 Audit PostgreSQL`. Apply
 `database/audit/sql/001_create_idempotency_records.sql` before running the
@@ -51,10 +74,18 @@ Workflow source:
 Idempotency sub-workflow:
 `workflows/ASSET001-idempotency-guard.json`
 
-Both workflow exports use stable IDs. Import the idempotency sub-workflow before
-the parent workflow, then publish both workflows. The child must remain
+HubSpot contact-match sub-workflow:
+`workflows/ASSET001-hubspot-contact-match.json`
+
+The workflow exports use stable IDs. Import the sub-workflows before the parent
+workflow, then publish the required workflows. Each called child must remain
 published because n8n only permits **Execute Sub-workflow** to call a published
 workflow.
+
+The HubSpot workflow uses the n8n Service Key credential named
+`HubspotConnectionSK`. Store normalized E.164 values in HubSpot's standard
+`phone` property whenever contacts are created or updated so the exact-match
+fallback remains deterministic.
 
 Create an n8n Data Table named `asset001_runtime_config` with these columns and
 row:
@@ -119,12 +150,18 @@ src/generate-idempotency-key.js
 src/restore-idempotency-context.js
 src/finalize-idempotency-result.js
 src/bypass-idempotency.js
+src/evaluate-email-results.js
+src/evaluate-phone-results.js
+src/produce-match-decision.js
+src/prepare-hubspot-match-input.js
 scripts/build-workflow.mjs
 tests/validation.test.mjs
+tests/hubspot-contact-match.test.mjs
 tests/validation-scenarios.md
 examples/valid-lead.json
 examples/invalid-lead.json
 workflows/ASSET001-website-lead-form.json
 workflows/ASSET001-idempotency-guard.json
+workflows/ASSET001-hubspot-contact-match.json
 postman/ASSET001-lead-form.postman_collection.json
 ```

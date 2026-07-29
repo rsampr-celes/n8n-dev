@@ -13,6 +13,10 @@ const idempotencyWorkflowPath = path.join(
   workflowsDirectory,
   'ASSET001-idempotency-guard.json',
 );
+const hubspotMatchWorkflowPath = path.join(
+  workflowsDirectory,
+  'ASSET001-hubspot-contact-match.json',
+);
 const schemaPath = path.join(assetDirectory, 'schemas', 'lead-submission.schema.json');
 const sourceDirectory = path.join(assetDirectory, 'src');
 const validationSourcePath = path.join(sourceDirectory, 'normalize-and-validate.js');
@@ -34,6 +38,22 @@ const bypassSource = fs.readFileSync(
 );
 const applyConfigSource = fs.readFileSync(
   path.join(sourceDirectory, 'apply-idempotency-config.js'),
+  'utf8',
+);
+const evaluateEmailResultsSource = fs.readFileSync(
+  path.join(sourceDirectory, 'evaluate-email-results.js'),
+  'utf8',
+);
+const evaluatePhoneResultsSource = fs.readFileSync(
+  path.join(sourceDirectory, 'evaluate-phone-results.js'),
+  'utf8',
+);
+const produceMatchDecisionSource = fs.readFileSync(
+  path.join(sourceDirectory, 'produce-match-decision.js'),
+  'utf8',
+);
+const prepareHubspotMatchInputSource = fs.readFileSync(
+  path.join(sourceDirectory, 'prepare-hubspot-match-input.js'),
   'utf8',
 );
 const marker = '/*__AJV_STANDALONE_VALIDATOR__*/';
@@ -189,6 +209,8 @@ const managedNodeIds = new Set([
   'asset001-bypass-idempotency',
   'asset001-should-continue',
   'asset001-duplicate-handled',
+  'asset001-prepare-hubspot-match-input',
+  'asset001-execute-hubspot-match-subflow',
 ]);
 
 workflow.nodes = workflow.nodes.filter((node) => !managedNodeIds.has(node.id));
@@ -238,10 +260,43 @@ workflow.nodes.push(
     position: [1300, 220],
     leftValue: '={{ $json.idempotency.should_continue }}',
   }),
+  codeNode({
+    id: 'asset001-prepare-hubspot-match-input',
+    name: 'Prepare HubSpot Match Input',
+    position: [1560, 140],
+    jsCode: prepareHubspotMatchInputSource,
+  }),
+  {
+    parameters: {
+      source: 'database',
+      workflowId: {
+        __rl: true,
+        value: 'ASSET001HubSpotMatch01',
+        mode: 'id',
+      },
+      workflowInputs: {
+        mappingMode: 'defineBelow',
+        value: {},
+        matchingColumns: [],
+        schema: [],
+        attemptToConvertTypes: false,
+        convertFieldsToString: true,
+      },
+      mode: 'once',
+      options: {
+        waitForSubWorkflow: true,
+      },
+    },
+    type: 'n8n-nodes-base.executeWorkflow',
+    typeVersion: 1.3,
+    position: [1820, 140],
+    id: 'asset001-execute-hubspot-match-subflow',
+    name: 'Execute HubSpot Contact Match',
+  },
   noOpNode({
     id: 'asset001-valid-placeholder',
     name: 'Continue Qualification',
-    position: [1560, 140],
+    position: [2080, 140],
   }),
   noOpNode({
     id: 'asset001-duplicate-handled',
@@ -273,9 +328,15 @@ workflow.connections = {
   },
   'Continue After Idempotency?': {
     main: [
-      [{ node: 'Continue Qualification', type: 'main', index: 0 }],
+      [{ node: 'Prepare HubSpot Match Input', type: 'main', index: 0 }],
       [{ node: 'Duplicate Submission Handled', type: 'main', index: 0 }],
     ],
+  },
+  'Prepare HubSpot Match Input': {
+    main: [[{ node: 'Execute HubSpot Contact Match', type: 'main', index: 0 }]],
+  },
+  'Execute HubSpot Contact Match': {
+    main: [[{ node: 'Continue Qualification', type: 'main', index: 0 }]],
   },
 };
 
@@ -443,4 +504,28 @@ fs.writeFileSync(workflowPath, `${JSON.stringify(workflow, null, 2)}\n`);
 fs.writeFileSync(
   idempotencyWorkflowPath,
   `${JSON.stringify(idempotencyWorkflow, null, 2)}\n`,
+);
+
+const hubspotMatchWorkflow = JSON.parse(
+  fs.readFileSync(hubspotMatchWorkflowPath, 'utf8'),
+);
+const hubspotCodeSources = new Map([
+  ['Evaluate Email Results', evaluateEmailResultsSource],
+  ['Evaluate Phone Results', evaluatePhoneResultsSource],
+  ['Produce Match Decision', produceMatchDecisionSource],
+]);
+
+for (const [nodeName, source] of hubspotCodeSources) {
+  const node = hubspotMatchWorkflow.nodes.find(
+    (candidate) => candidate.name === nodeName,
+  );
+  if (!node) {
+    throw new Error(`${nodeName} was not found in ${hubspotMatchWorkflowPath}`);
+  }
+  node.parameters.jsCode = source;
+}
+
+fs.writeFileSync(
+  hubspotMatchWorkflowPath,
+  `${JSON.stringify(hubspotMatchWorkflow, null, 2)}\n`,
 );

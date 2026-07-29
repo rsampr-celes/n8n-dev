@@ -5,7 +5,7 @@
   "description": "Versioned n8n workflow assets and contract tests",
   "scripts": {
     "build:asset001": "node assets/ASSET001-ai-lead-qualification/scripts/build-workflow.mjs",
-    "test": "npm run build:asset001 && node --test assets/ASSET001-ai-lead-qualification/tests/validation.test.mjs"
+    "test": "npm run build:asset001 && node --test assets/ASSET001-ai-lead-qualification/tests/validation.test.mjs assets/ASSET001-ai-lead-qualification/tests/hubspot-contact-match.test.mjs"
   },
   "dependencies": {
     "ajv": "8.20.0",
