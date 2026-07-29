@@ -3,25 +3,29 @@
 This mapping reflects the current implementation in:
 
 - `workflows/ASSET001-website-lead-form.json`
+- `workflows/ASSET001-idempotency-guard.json`
 - `src/normalize-and-validate.js`
-- `schemas/lead-submission.schema.json`
 - `src/generate-idempotency-key.js`
+- `schemas/lead-submission.schema.json`
+
+Each processing stage emits an explicit contract. A stage does not carry the
+complete preceding payload unless every field is required by the next stage.
 
 ## FormItem → Validate & Normalize
 
-| FormItem | Form label | Type | Form required | Normalized output | Normalize rule | Blank handling | Schema validation |
+| FormItem | Form label | Type | Required | Normalized output | Normalize rule | Blank handling | Schema validation |
 |---|---|---|---:|---|---|---|---|
-| `full_name` | Full name | text | Yes | `lead.full_name` | Trim leading/trailing whitespace and collapse whitespace runs to one space. | Omit normalized field. | Required string; length 1–120. |
-| `email` | Work email | email | Yes | `lead.email_normalized` | Trim and lowercase. | Omit normalized field. | Required string; email format; maximum 254 characters. |
-| `phone` | Phone number | text | No | `lead.phone_normalized` | Trim, then remove whitespace, parentheses, periods, and hyphens. | Set to `null`. | String or `null`; when present, must match `^\+[1-9]\d{6,14}$`. |
-| `company` | Company | text | No | `lead.company` | Trim and collapse whitespace runs to one space. | Set to `null`. | String or `null`; maximum 160 characters. |
-| `company_website` | Company website | text | No | `lead.company_website` | Trim; if URL parsing succeeds, remove the fragment and serialize the URL. If parsing fails, keep the trimmed value for validation to reject. | Set to `null`. | String or `null`; URI format; must start with `http://` or `https://`; maximum 2,048 characters. |
-| `service_requested` | Service requested | dropdown | No | `lead.service_requested` | Normalize whitespace, then map the selected label to the canonical value shown below. An unknown nonblank value passes through and fails enum validation. | Set to `null`. | String or `null`; canonical enum only. |
-| `message` | Tell us about your requirement | textarea | Yes | `lead.message_sanitized` | Convert CRLF/CR line endings to LF, remove disallowed control characters, and trim. | Omit normalized field. | Required string; length 1–5,000. |
-| `budget` | Estimated budget | dropdown | No | `lead.budget_band` | Normalize whitespace, then map the selected label to the canonical value shown below. An unknown nonblank value passes through and fails enum validation. | Set to `null`. | String or `null`; canonical enum only. |
-| `timeline` | Expected timeline | dropdown | No | `lead.timeline_band` | Normalize whitespace, then map the selected label to the canonical value shown below. An unknown nonblank value passes through and fails enum validation. | Set to `null`. | String or `null`; canonical enum only. |
-| `country` | Country | text | No | `lead.country` | Trim and collapse whitespace runs to one space. | Set to `null`. | String or `null`; maximum 100 characters. |
-| `consent` | Consent | checkbox | Yes | `lead.consent` | `true` is produced only for Boolean `true`, the exact consent text, or a one-element array containing that exact text. All other supplied values become `false`. | Omit normalized field when input is `undefined` or `null`. | Required; value must be Boolean `true`. |
+| `full_name` | Full name | text | Yes | `lead.full_name` | Trim and collapse whitespace runs. | Omit. | Required string; length 1–120. |
+| `email` | Work email | email | Yes | `lead.email_normalized` | Trim and lowercase. | Omit. | Required email string; maximum 254 characters. |
+| `phone` | Phone number | text | No | `lead.phone_normalized` | Trim; remove whitespace, parentheses, periods, and hyphens. | `null` | String or `null`; must match `^\+[1-9]\d{6,14}$`. |
+| `company` | Company | text | No | `lead.company` | Trim and collapse whitespace runs. | `null` | String or `null`; maximum 160 characters. |
+| `company_website` | Company website | text | No | `lead.company_website` | Trim; parse as URL, remove fragment, and serialize. Invalid input remains trimmed for validation to reject. | `null` | URI string or `null`; HTTP(S) only; maximum 2,048 characters. |
+| `service_requested` | Service requested | dropdown | No | `lead.service_requested` | Normalize whitespace and map to the canonical value below. | `null` | Canonical enum string or `null`. |
+| `message` | Tell us about your requirement | textarea | Yes | `lead.message_sanitized` | Normalize line endings, remove disallowed control characters, and trim. | Omit. | Required string; length 1–5,000. |
+| `budget` | Estimated budget | dropdown | No | `lead.budget_band` | Normalize whitespace and map to the canonical value below. | `null` | Canonical enum string or `null`. |
+| `timeline` | Expected timeline | dropdown | No | `lead.timeline_band` | Normalize whitespace and map to the canonical value below. | `null` | Canonical enum string or `null`. |
+| `country` | Country | text | No | `lead.country` | Trim and collapse whitespace runs. | `null` | String or `null`; maximum 100 characters. |
+| `consent` | Consent | checkbox | Yes | `lead.consent` | Produce `true` only for Boolean `true`, the exact consent text, or a one-element array containing the exact text. | Omit for `undefined`/`null`. | Required; must be Boolean `true`. |
 
 ### Canonical option mappings
 
@@ -43,9 +47,20 @@ This mapping reflects the current implementation in:
 | `timeline` | `Later` | `later` |
 | `timeline` | `Not decided` | `not_decided` |
 
-## Normalized fields → Idempotency
+## Normalized fields → Idempotency sub-workflow
 
-The guard generates:
+The complete canonical normalization result is sent to the sub-workflow. Its
+first Code stage extracts only the following fields:
+
+| Normalized/context field | Retained after configuration | Stage field | Handling |
+|---|---:|---|---|
+| `context.correlation_id` | Yes | `correlation_id` | Required by the database claim. |
+| `lead.email_normalized` | Yes | `email_normalized` | Key component 1; trim and lowercase again. |
+| `lead.phone_normalized` | Yes | `phone_normalized` | Key component 2; `null` becomes an empty string. |
+| `context.submission_reference` | Yes | `submission_reference` | Key component 3; `null` becomes an empty string. |
+| All other `context`, `lead`, and `validation` fields | No | — | Removed at the idempotency boundary. |
+
+The key is:
 
 ```text
 SHA-256(lowercase(trim(email_normalized)) + "|" +
@@ -53,48 +68,18 @@ SHA-256(lowercase(trim(email_normalized)) + "|" +
         trim(submission_reference))
 ```
 
-For every key component, `undefined` and `null` become an empty string.
-
-| Normalized/context field | Included in key | Key position | Idempotency handling |
-|---|---:|---:|---|
-| `lead.full_name` | No | — | Passed through in the workflow payload only. |
-| `lead.email_normalized` | Yes | 1 | Convert missing/`null` to `""`, trim again, and lowercase. |
-| `lead.phone_normalized` | Yes | 2 | Convert missing/`null` to `""` and trim again. |
-| `lead.company` | No | — | Passed through in the workflow payload only. |
-| `lead.company_website` | No | — | Passed through in the workflow payload only. |
-| `lead.service_requested` | No | — | Passed through in the workflow payload only. |
-| `lead.message_sanitized` | No | — | Passed through in the workflow payload only. |
-| `lead.budget_band` | No | — | Passed through in the workflow payload only. |
-| `lead.timeline_band` | No | — | Passed through in the workflow payload only. |
-| `lead.country` | No | — | Passed through in the workflow payload only. |
-| `lead.consent` | No | — | Passed through in the workflow payload only. |
-| `context.submission_reference` | Yes | 3 | Derived from optional raw `submission_reference` using trim and whitespace collapse; then converted from missing/`null` to `""` and trimmed again. This is not a configured Website Lead Form item. |
-
-### Idempotency result flow
-
-| Stage | Mapping/behavior |
-|---|---|
-| Generate | Store the SHA-256 digest at `idempotency.key`. |
-| Claim | Insert `(idempotency_key, correlation_id, status='processing')` into `workflow_audit.idempotency_records`, using an upsert on `idempotency_key`. |
-| `claimed` | `should_continue=true`; outcome `continue`. |
-| `completed` | `should_continue=false`; outcome `return_previous_result`. |
-| `processing` | `should_continue=false`; outcome `accepted_in_progress`. |
-| `failed` | `should_continue=false`; outcome `authorized_safe_replay_required`. |
-| Guard disabled | `key=null`; `claim_action=bypassed`; `should_continue=true`; outcome `continue`. |
-
 ## Source and destination JSON by stage
 
-The examples below show the contents of each n8n item's `json` property. The
-outer n8n item wrapper (`{ "json": ..., "pairedItem": ... }`) is omitted.
-Runtime-generated UUIDs and timestamps are represented by example values.
+Examples show the contents of each n8n item's `json` property. The outer n8n
+item wrapper is omitted.
 
 ### 1. Website Lead Form → Normalize and Validate Lead
 
 The example includes optional raw `submission_reference` to demonstrate the
-third idempotency-key component. It is accepted by the normalization code but
-is not configured as a visible Website Lead Form item.
+third key component. It is accepted by the normalization code but is not a
+visible Website Lead Form item.
 
-Source JSON:
+Source:
 
 ```json
 {
@@ -115,7 +100,7 @@ Source JSON:
 }
 ```
 
-Destination JSON:
+Destination:
 
 ```json
 {
@@ -148,137 +133,13 @@ Destination JSON:
 }
 ```
 
-The raw form fields are replaced by `context`, `lead`, and `validation`; they
-are not retained at the top level.
+### 2. Execute Idempotency Guard → Apply Idempotency Configuration
 
-### 2. Read/Apply Idempotency Configuration
-
-This stage has two sources:
-
-- Workflow source JSON: the destination from stage 1.
-- Data Table source row:
+Sources:
 
 ```json
 {
-  "key": "idempotency_enabled",
-  "enabled": true
-}
-```
-
-Destination JSON:
-
-```json
-{
-  "context": {
-    "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-    "received_at": "2026-07-28T19:30:00.000Z",
-    "submission_reference": "FORM-001",
-    "source": "n8n_form",
-    "schema": "lead-submission",
-    "schema_version": "1.0.0"
-  },
-  "lead": {
-    "phone_normalized": "+15550102000",
-    "company": "Northwind Services",
-    "company_website": "https://example.test/services",
-    "service_requested": "api_integration",
-    "budget_band": "5000_10000",
-    "timeline_band": "within_one_month",
-    "country": "United States",
-    "full_name": "Jane Smith",
-    "email_normalized": "jane@example.test",
-    "message_sanitized": "Connect our website leads with HubSpot.",
-    "consent": true
-  },
-  "validation": {
-    "is_valid": true,
-    "errors": [],
-    "warnings": []
-  },
-  "config": {
-    "idempotency_enabled": true,
-    "idempotency_config_source": "data_table",
-    "idempotency_config_row_found": true
-  }
-}
-```
-
-If the row is absent, `idempotency_config_row_found` is `false` and
-`idempotency_enabled` defaults to `true`. Only an explicit Boolean `false`
-disables the guard.
-
-### 3. Generate Idempotency Key
-
-Source JSON: the destination from stage 2.
-
-Key source:
-
-```json
-{
-  "email": "jane@example.test",
-  "phone": "+15550102000",
-  "submission_reference": "FORM-001",
-  "concatenated_source": "jane@example.test|+15550102000|FORM-001"
-}
-```
-
-Destination JSON:
-
-```json
-{
-  "context": {
-    "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-    "received_at": "2026-07-28T19:30:00.000Z",
-    "submission_reference": "FORM-001",
-    "source": "n8n_form",
-    "schema": "lead-submission",
-    "schema_version": "1.0.0"
-  },
-  "lead": {
-    "phone_normalized": "+15550102000",
-    "company": "Northwind Services",
-    "company_website": "https://example.test/services",
-    "service_requested": "api_integration",
-    "budget_band": "5000_10000",
-    "timeline_band": "within_one_month",
-    "country": "United States",
-    "full_name": "Jane Smith",
-    "email_normalized": "jane@example.test",
-    "message_sanitized": "Connect our website leads with HubSpot.",
-    "consent": true
-  },
-  "validation": {
-    "is_valid": true,
-    "errors": [],
-    "warnings": []
-  },
-  "config": {
-    "idempotency_enabled": true,
-    "idempotency_config_source": "data_table",
-    "idempotency_config_row_found": true
-  },
-  "idempotency": {
-    "key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e"
-  }
-}
-```
-
-### 4. Claim Idempotency Key
-
-Source JSON: the destination from stage 3. It is supplied to PostgreSQL as
-the third query parameter and returned in `workflow_payload`.
-
-Destination JSON returned by PostgreSQL for a newly claimed key:
-
-```json
-{
-  "claim_action": "claimed",
-  "idempotency_key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e",
-  "stored_correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-  "stored_status": "processing",
-  "previous_result": null,
-  "previous_error": null,
-  "workflow_payload": {
+  "workflow_request": {
     "context": {
       "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
       "received_at": "2026-07-28T19:30:00.000Z",
@@ -304,138 +165,107 @@ Destination JSON returned by PostgreSQL for a newly claimed key:
       "is_valid": true,
       "errors": [],
       "warnings": []
-    },
-    "config": {
-      "idempotency_enabled": true,
-      "idempotency_config_source": "data_table",
-      "idempotency_config_row_found": true
-    },
-    "idempotency": {
-      "key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e"
     }
+  },
+  "data_table_row": {
+    "key": "idempotency_enabled",
+    "enabled": true
   }
 }
 ```
 
-The PostgreSQL node temporarily replaces the top-level workflow payload with
-the claim row. The original payload survives under `workflow_payload`.
-
-### 5. Restore Idempotency Context
-
-Source JSON: the PostgreSQL destination from stage 4.
-
-Destination JSON:
+Destination:
 
 ```json
 {
-  "context": {
-    "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-    "received_at": "2026-07-28T19:30:00.000Z",
-    "submission_reference": "FORM-001",
-    "source": "n8n_form",
-    "schema": "lead-submission",
-    "schema_version": "1.0.0"
-  },
-  "lead": {
-    "phone_normalized": "+15550102000",
-    "company": "Northwind Services",
-    "company_website": "https://example.test/services",
-    "service_requested": "api_integration",
-    "budget_band": "5000_10000",
-    "timeline_band": "within_one_month",
-    "country": "United States",
-    "full_name": "Jane Smith",
-    "email_normalized": "jane@example.test",
-    "message_sanitized": "Connect our website leads with HubSpot.",
-    "consent": true
-  },
-  "validation": {
-    "is_valid": true,
-    "errors": [],
-    "warnings": []
-  },
-  "config": {
-    "idempotency_enabled": true,
-    "idempotency_config_source": "data_table",
-    "idempotency_config_row_found": true
-  },
-  "idempotency": {
-    "key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e",
-    "claim_action": "claimed",
-    "stored_correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-    "stored_status": "processing",
-    "previous_result": null,
-    "previous_error": null
-  }
+  "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
+  "email_normalized": "jane@example.test",
+  "phone_normalized": "+15550102000",
+  "submission_reference": "FORM-001",
+  "idempotency_enabled": true
 }
 ```
 
-`workflow_payload` is unwrapped, and the database claim metadata is merged
-into `idempotency`.
+Only an explicit Boolean `false` disables the guard. A missing configuration
+row fails safe with `idempotency_enabled=true`. This destination is the
+contraction boundary; unneeded normalized fields are discarded here.
 
-### 6. Finalize Idempotency Result
+### 3. Generate Idempotency Key
 
-Source JSON: the destination from stage 5.
+Source: the stage 2 destination.
 
-Destination JSON for `claim_action="claimed"`:
+Destination:
 
 ```json
 {
-  "context": {
-    "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-    "received_at": "2026-07-28T19:30:00.000Z",
-    "submission_reference": "FORM-001",
-    "source": "n8n_form",
-    "schema": "lead-submission",
-    "schema_version": "1.0.0"
-  },
-  "lead": {
-    "phone_normalized": "+15550102000",
-    "company": "Northwind Services",
-    "company_website": "https://example.test/services",
-    "service_requested": "api_integration",
-    "budget_band": "5000_10000",
-    "timeline_band": "within_one_month",
-    "country": "United States",
-    "full_name": "Jane Smith",
-    "email_normalized": "jane@example.test",
-    "message_sanitized": "Connect our website leads with HubSpot.",
-    "consent": true
-  },
-  "validation": {
-    "is_valid": true,
-    "errors": [],
-    "warnings": []
-  },
-  "config": {
-    "idempotency_enabled": true,
-    "idempotency_config_source": "data_table",
-    "idempotency_config_row_found": true
-  },
+  "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
+  "idempotency_key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e"
+}
+```
+
+The three key components and configuration flag are discarded after the hash
+is generated.
+
+### 4. Claim Idempotency Key
+
+Source: the stage 3 destination. Its two fields become the two PostgreSQL
+parameters.
+
+Destination for a newly claimed key:
+
+```json
+{
+  "claim_action": "claimed",
+  "idempotency_key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e",
+  "stored_correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
+  "stored_status": "processing",
+  "previous_result": null,
+  "previous_error": null
+}
+```
+
+The database no longer receives or returns a `workflow_payload`. Therefore,
+there is no Restore Idempotency Context stage.
+
+### 5. Route and Finalize Idempotency Result
+
+Source: the stage 4 destination.
+
+`Route Claim Action` exposes four labeled execution paths in the n8n canvas:
+`claimed`, `completed`, `processing`, and `failed`. All four paths converge on
+`Finalize Idempotency Result`, which emits the common response contract below.
+The selected route is visible in each execution.
+
+Destination:
+
+```json
+{
   "idempotency": {
+    "enabled": true,
     "key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e",
     "claim_action": "claimed",
     "stored_correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
     "stored_status": "processing",
     "previous_result": null,
     "previous_error": null,
-    "enabled": true,
     "should_continue": true,
     "outcome": "continue"
   }
 }
 ```
 
-For an existing key, the same shape is returned with `claim_action` set to
-`completed`, `processing`, or `failed`; `should_continue` becomes `false` and
-`outcome` is mapped according to the result-flow table above.
+| Claim action | `should_continue` | Outcome |
+|---|---:|---|
+| `claimed` | `true` | `continue` |
+| `completed` | `false` | `return_previous_result` |
+| `processing` | `false` | `accepted_in_progress` |
+| `failed` | `false` | `authorized_safe_replay_required` |
 
-### 7. Bypass Idempotency branch
+### 6. Bypass branch
 
-Source JSON: the destination from stage 2 when
-`config.idempotency_enabled=false`.
+Source: the stage 2 destination when `idempotency_enabled=false`.
 
-Destination `idempotency` object:
+Destination:
 
 ```json
 {
@@ -449,10 +279,12 @@ Destination `idempotency` object:
 }
 ```
 
-The `context`, `lead`, `validation`, and `config` objects from the source are
-retained unchanged alongside this `idempotency` object.
-
 ### Pass-through decision stages
 
 `Is Lead Valid?`, `Is Idempotency Enabled?`, and
 `Continue After Idempotency?` route items but do not change their JSON.
+
+The current `Continue Qualification` placeholder receives only the final
+`idempotency` decision. When qualification is implemented, its stage should
+select only the normalized lead fields it requires instead of restoring every
+earlier field.

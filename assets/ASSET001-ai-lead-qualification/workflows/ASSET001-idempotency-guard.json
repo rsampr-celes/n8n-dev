@@ -52,7 +52,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const configRow = $input.first()?.json ?? {};\nconst workflowInput = $('When Executed by Another Workflow').first().json;\nconst rowFound = configRow.key === 'idempotency_enabled';\n\n// Fail safe: only an explicit Boolean false disables the guard.\nconst enabled = rowFound ? configRow.enabled !== false : true;\n\nreturn [{\n  json: {\n    ...workflowInput,\n    config: {\n      ...(workflowInput.config ?? {}),\n      idempotency_enabled: enabled,\n      idempotency_config_source: 'data_table',\n      idempotency_config_row_found: rowFound,\n    },\n  },\n}];\n"
+        "jsCode": "const configRow = $input.first()?.json ?? {};\nconst workflowInput = $('When Executed by Another Workflow').first().json;\nconst rowFound = configRow.key === 'idempotency_enabled';\n\n// Fail safe: only an explicit Boolean false disables the guard.\nconst enabled = rowFound ? configRow.enabled !== false : true;\n\nreturn [{\n  json: {\n    correlation_id: workflowInput.context.correlation_id,\n    email_normalized: workflowInput.lead.email_normalized,\n    phone_normalized: workflowInput.lead.phone_normalized ?? null,\n    submission_reference: workflowInput.context.submission_reference ?? null,\n    idempotency_enabled: enabled,\n  },\n}];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -75,7 +75,7 @@
           "conditions": [
             {
               "id": "asset001-subflow-is-enabled-condition",
-              "leftValue": "={{ $json.config.idempotency_enabled }}",
+              "leftValue": "={{ $json.idempotency_enabled }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -100,7 +100,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return $input.all().map((item, index) => ({\n  json: {\n    ...item.json,\n    idempotency: {\n      enabled: false,\n      key: null,\n      claim_action: 'bypassed',\n      should_continue: true,\n      outcome: 'continue',\n    },\n  },\n  pairedItem: { item: index },\n}));\n"
+        "jsCode": "return $input.all().map((item, index) => ({\n  json: {\n    idempotency: {\n      enabled: false,\n      key: null,\n      claim_action: 'bypassed',\n      should_continue: true,\n      outcome: 'continue',\n    },\n  },\n  pairedItem: { item: index },\n}));\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -114,7 +114,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const { createHash } = require('crypto');\n\nfunction stableValue(value) {\n  if (value === undefined || value === null) return '';\n  return String(value).trim();\n}\n\nreturn $input.all().map((item, index) => {\n  const payload = item.json;\n  const email = stableValue(payload.lead?.email_normalized).toLowerCase();\n  const phone = stableValue(payload.lead?.phone_normalized);\n  const submissionReference = stableValue(payload.context?.submission_reference);\n  const source = `${email}|${phone}|${submissionReference}`;\n  const key = createHash('sha256').update(source, 'utf8').digest('hex');\n\n  return {\n    json: {\n      ...payload,\n      idempotency: {\n        key,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "const { createHash } = require('crypto');\n\nfunction stableValue(value) {\n  if (value === undefined || value === null) return '';\n  return String(value).trim();\n}\n\nreturn $input.all().map((item, index) => {\n  const payload = item.json;\n  const email = stableValue(payload.email_normalized).toLowerCase();\n  const phone = stableValue(payload.phone_normalized);\n  const submissionReference = stableValue(payload.submission_reference);\n  const source = `${email}|${phone}|${submissionReference}`;\n  const key = createHash('sha256').update(source, 'utf8').digest('hex');\n\n  return {\n    json: {\n      correlation_id: payload.correlation_id,\n      idempotency_key: key,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -128,9 +128,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO workflow_audit.idempotency_records AS existing\n  (idempotency_key, correlation_id, status)\nVALUES ($1, $2::uuid, 'processing')\nON CONFLICT (idempotency_key) DO UPDATE\nSET updated_at = existing.updated_at\nRETURNING\n  CASE WHEN xmax = 0 THEN 'claimed' ELSE status END AS claim_action,\n  idempotency_key,\n  correlation_id AS stored_correlation_id,\n  status AS stored_status,\n  result_json AS previous_result,\n  error_json AS previous_error,\n  $3::jsonb AS workflow_payload;",
+        "query": "INSERT INTO workflow_audit.idempotency_records AS existing\n  (idempotency_key, correlation_id, status)\nVALUES ($1, $2::uuid, 'processing')\nON CONFLICT (idempotency_key) DO UPDATE\nSET updated_at = existing.updated_at\nRETURNING\n  CASE WHEN xmax = 0 THEN 'claimed' ELSE status END AS claim_action,\n  idempotency_key,\n  correlation_id AS stored_correlation_id,\n  status AS stored_status,\n  result_json AS previous_result,\n  error_json AS previous_error;",
         "options": {
-          "queryReplacement": "={{ [$json.idempotency.key, $json.context.correlation_id, $json] }}"
+          "queryReplacement": "={{ [$json.idempotency_key, $json.correlation_id] }}"
         }
       },
       "type": "n8n-nodes-base.postgres",
@@ -150,22 +150,121 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return $input.all().map((item, index) => {\n  const claim = item.json;\n  const payload = claim.workflow_payload;\n\n  if (!payload || typeof payload !== 'object') {\n    throw new Error('Idempotency claim did not return the workflow payload');\n  }\n\n  return {\n    json: {\n      ...payload,\n      idempotency: {\n        ...payload.idempotency,\n        claim_action: claim.claim_action,\n        stored_correlation_id: claim.stored_correlation_id,\n        stored_status: claim.stored_status,\n        previous_result: claim.previous_result ?? null,\n        previous_error: claim.previous_error ?? null,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "asset001-subflow-route-claim-action-claimed-condition",
+                    "leftValue": "={{ $json.claim_action }}",
+                    "rightValue": "claimed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "claimed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "asset001-subflow-route-claim-action-completed-condition",
+                    "leftValue": "={{ $json.claim_action }}",
+                    "rightValue": "completed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "completed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "asset001-subflow-route-claim-action-processing-condition",
+                    "leftValue": "={{ $json.claim_action }}",
+                    "rightValue": "processing",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "processing"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "asset001-subflow-route-claim-action-failed-condition",
+                    "leftValue": "={{ $json.claim_action }}",
+                    "rightValue": "failed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed"
+            }
+          ]
+        },
+        "options": {}
       },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
       "position": [
         1820,
         220
       ],
-      "id": "asset001-subflow-restore-context",
-      "name": "Restore Idempotency Context"
+      "id": "asset001-subflow-route-claim-action",
+      "name": "Route Claim Action"
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const OUTCOMES = {\n  claimed: 'continue',\n  completed: 'return_previous_result',\n  processing: 'accepted_in_progress',\n  failed: 'authorized_safe_replay_required',\n};\n\nreturn $input.all().map((item, index) => {\n  const payload = item.json;\n  const claimAction = payload.idempotency?.claim_action;\n  const outcome = OUTCOMES[claimAction];\n\n  if (!outcome) {\n    throw new Error(`Unsupported idempotency claim action: ${claimAction}`);\n  }\n\n  return {\n    json: {\n      ...payload,\n      idempotency: {\n        ...payload.idempotency,\n        enabled: true,\n        should_continue: claimAction === 'claimed',\n        outcome,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "const OUTCOMES = {\n  claimed: 'continue',\n  completed: 'return_previous_result',\n  processing: 'accepted_in_progress',\n  failed: 'authorized_safe_replay_required',\n};\n\nreturn $input.all().map((item, index) => {\n  const claim = item.json;\n  const claimAction = claim.claim_action;\n  const outcome = OUTCOMES[claimAction];\n\n  if (!outcome) {\n    throw new Error(`Unsupported idempotency claim action: ${claimAction}`);\n  }\n\n  return {\n    json: {\n      idempotency: {\n        enabled: true,\n        key: claim.idempotency_key,\n        claim_action: claimAction,\n        stored_correlation_id: claim.stored_correlation_id,\n        stored_status: claim.stored_status,\n        previous_result: claim.previous_result ?? null,\n        previous_error: claim.previous_error ?? null,\n        should_continue: claimAction === 'claimed',\n        outcome,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -245,15 +344,36 @@
       "main": [
         [
           {
-            "node": "Restore Idempotency Context",
+            "node": "Route Claim Action",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Restore Idempotency Context": {
+    "Route Claim Action": {
       "main": [
+        [
+          {
+            "node": "Finalize Idempotency Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finalize Idempotency Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Finalize Idempotency Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Finalize Idempotency Result",

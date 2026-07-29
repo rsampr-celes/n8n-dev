@@ -7,12 +7,10 @@ const enabled = rowFound ? configRow.enabled !== false : true;
 
 return [{
   json: {
-    ...workflowInput,
-    config: {
-      ...(workflowInput.config ?? {}),
-      idempotency_enabled: enabled,
-      idempotency_config_source: 'data_table',
-      idempotency_config_row_found: rowFound,
-    },
+    correlation_id: workflowInput.context.correlation_id,
+    email_normalized: workflowInput.lead.email_normalized,
+    phone_normalized: workflowInput.lead.phone_normalized ?? null,
+    submission_reference: workflowInput.context.submission_reference ?? null,
+    idempotency_enabled: enabled,
   },
 }];

@@ -6,8 +6,8 @@ const OUTCOMES = {
 };
 
 return $input.all().map((item, index) => {
-  const payload = item.json;
-  const claimAction = payload.idempotency?.claim_action;
+  const claim = item.json;
+  const claimAction = claim.claim_action;
   const outcome = OUTCOMES[claimAction];
 
   if (!outcome) {
@@ -16,10 +16,14 @@ return $input.all().map((item, index) => {
 
   return {
     json: {
-      ...payload,
       idempotency: {
-        ...payload.idempotency,
         enabled: true,
+        key: claim.idempotency_key,
+        claim_action: claimAction,
+        stored_correlation_id: claim.stored_correlation_id,
+        stored_status: claim.stored_status,
+        previous_result: claim.previous_result ?? null,
+        previous_error: claim.previous_error ?? null,
         should_continue: claimAction === 'claimed',
         outcome,
       },

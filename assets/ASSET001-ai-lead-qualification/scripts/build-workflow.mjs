@@ -24,10 +24,6 @@ const idempotencySource = fs.readFileSync(
   path.join(sourceDirectory, 'generate-idempotency-key.js'),
   'utf8',
 );
-const restoreContextSource = fs.readFileSync(
-  path.join(sourceDirectory, 'restore-idempotency-context.js'),
-  'utf8',
-);
 const finalizeResultSource = fs.readFileSync(
   path.join(sourceDirectory, 'finalize-idempotency-result.js'),
   'utf8',
@@ -118,6 +114,47 @@ function codeNode({ id, name, position, jsCode }) {
   };
 }
 
+function claimActionSwitchNode({ id, name, position }) {
+  const actions = ['claimed', 'completed', 'processing', 'failed'];
+
+  return {
+    parameters: {
+      rules: {
+        values: actions.map((action) => ({
+          conditions: {
+            options: {
+              caseSensitive: true,
+              leftValue: '',
+              typeValidation: 'strict',
+              version: 2,
+            },
+            conditions: [
+              {
+                id: `${id}-${action}-condition`,
+                leftValue: '={{ $json.claim_action }}',
+                rightValue: action,
+                operator: {
+                  type: 'string',
+                  operation: 'equals',
+                },
+              },
+            ],
+            combinator: 'and',
+          },
+          renameOutput: true,
+          outputKey: action,
+        })),
+      },
+      options: {},
+    },
+    type: 'n8n-nodes-base.switch',
+    typeVersion: 3.2,
+    position,
+    id,
+    name,
+  };
+}
+
 function noOpNode({ id, name, position }) {
   return {
     parameters: {},
@@ -147,6 +184,7 @@ const managedNodeIds = new Set([
   'asset001-read-idempotency-config',
   'asset001-apply-idempotency-config',
   'asset001-is-idempotency-enabled',
+  'asset001-prepare-idempotency-request',
   'asset001-execute-idempotency-subflow',
   'asset001-bypass-idempotency',
   'asset001-should-continue',
@@ -296,7 +334,7 @@ const idempotencyWorkflow = {
       id: 'asset001-subflow-is-enabled',
       name: 'Is Idempotency Enabled?',
       position: [1040, 300],
-      leftValue: '={{ $json.config.idempotency_enabled }}',
+      leftValue: '={{ $json.idempotency_enabled }}',
     }),
     codeNode({
       id: 'asset001-subflow-bypass',
@@ -325,12 +363,11 @@ const idempotencyWorkflow = {
           '  correlation_id AS stored_correlation_id,',
           '  status AS stored_status,',
           '  result_json AS previous_result,',
-          '  error_json AS previous_error,',
-          '  $3::jsonb AS workflow_payload;',
+          '  error_json AS previous_error;',
         ].join('\n'),
         options: {
           queryReplacement:
-            '={{ [$json.idempotency.key, $json.context.correlation_id, $json] }}',
+            '={{ [$json.idempotency_key, $json.correlation_id] }}',
         },
       },
       type: 'n8n-nodes-base.postgres',
@@ -345,11 +382,10 @@ const idempotencyWorkflow = {
         },
       },
     },
-    codeNode({
-      id: 'asset001-subflow-restore-context',
-      name: 'Restore Idempotency Context',
+    claimActionSwitchNode({
+      id: 'asset001-subflow-route-claim-action',
+      name: 'Route Claim Action',
       position: [1820, 220],
-      jsCode: restoreContextSource,
     }),
     codeNode({
       id: 'asset001-subflow-finalize-result',
@@ -379,10 +415,15 @@ const idempotencyWorkflow = {
       main: [[{ node: 'Claim Idempotency Key', type: 'main', index: 0 }]],
     },
     'Claim Idempotency Key': {
-      main: [[{ node: 'Restore Idempotency Context', type: 'main', index: 0 }]],
+      main: [[{ node: 'Route Claim Action', type: 'main', index: 0 }]],
     },
-    'Restore Idempotency Context': {
-      main: [[{ node: 'Finalize Idempotency Result', type: 'main', index: 0 }]],
+    'Route Claim Action': {
+      main: [
+        [{ node: 'Finalize Idempotency Result', type: 'main', index: 0 }],
+        [{ node: 'Finalize Idempotency Result', type: 'main', index: 0 }],
+        [{ node: 'Finalize Idempotency Result', type: 'main', index: 0 }],
+        [{ node: 'Finalize Idempotency Result', type: 'main', index: 0 }],
+      ],
     },
   },
   active: false,

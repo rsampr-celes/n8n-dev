@@ -272,20 +272,28 @@ test('I01 idempotency key uses the documented normalized source', () => {
     ...clone(validInput),
     submission_reference: ' FORM-001 ',
   });
-  const result = generateIdempotencyKey(normalized);
+  const configured = applyIdempotencyConfig({
+    key: 'idempotency_enabled',
+    enabled: true,
+  }, normalized);
+  const result = generateIdempotencyKey(configured);
 
   assert.equal(
-    result.idempotency.key,
+    result.idempotency_key,
     '5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e',
   );
 });
 
 test('I02 repeated normalized submission produces the same key', () => {
-  const first = generateIdempotencyKey(run(clone(validInput)));
-  const second = generateIdempotencyKey(run(clone(validInput)));
+  const first = generateIdempotencyKey(
+    applyIdempotencyConfig({}, run(clone(validInput))),
+  );
+  const second = generateIdempotencyKey(
+    applyIdempotencyConfig({}, run(clone(validInput))),
+  );
 
-  assert.equal(first.idempotency.key, second.idempotency.key);
-  assert.match(first.idempotency.key, /^[0-9a-f]{64}$/);
+  assert.equal(first.idempotency_key, second.idempotency_key);
+  assert.match(first.idempotency_key, /^[0-9a-f]{64}$/);
 });
 
 test('I03 submission reference separates otherwise identical submissions', () => {
@@ -293,8 +301,8 @@ test('I03 submission reference separates otherwise identical submissions', () =>
   const second = run({ ...clone(validInput), submission_reference: 'FORM-002' });
 
   assert.notEqual(
-    generateIdempotencyKey(first).idempotency.key,
-    generateIdempotencyKey(second).idempotency.key,
+    generateIdempotencyKey(applyIdempotencyConfig({}, first)).idempotency_key,
+    generateIdempotencyKey(applyIdempotencyConfig({}, second)).idempotency_key,
   );
 });
 
@@ -305,6 +313,11 @@ test('I04 claim happens before qualification and handles every stored state', ()
   assert.ok(claimNode);
   assert.match(claimNode.parameters.query, /ON CONFLICT \(idempotency_key\)/);
   assert.match(claimNode.parameters.query, /CASE WHEN xmax = 0 THEN 'claimed'/);
+  assert.doesNotMatch(claimNode.parameters.query, /workflow_payload/);
+  assert.equal(
+    idempotencyWorkflow.nodes.some((node) => node.name === 'Restore Idempotency Context'),
+    false,
+  );
 
   assert.equal(
     workflow.nodes.some((node) => node.type === 'n8n-nodes-base.postgres'),
@@ -315,6 +328,14 @@ test('I04 claim happens before qualification and handles every stored state', ()
     false,
   );
   assert.ok(workflow.nodes.some((node) => node.name === 'Execute Idempotency Guard'));
+  assert.equal(
+    workflow.nodes.some((node) => node.name === 'Prepare Idempotency Request'),
+    false,
+  );
+  assert.equal(
+    workflow.connections['Is Lead Valid?'].main[0][0].node,
+    'Execute Idempotency Guard',
+  );
   assert.equal(idempotencyWorkflow.settings.callerPolicy, 'workflowsFromAList');
   assert.equal(idempotencyWorkflow.settings.callerIds, workflow.id);
 });
@@ -359,7 +380,7 @@ test('I06 Data Table false bypasses idempotency and continues', () => {
     all: () => [{ json: configured }],
   })[0].json;
 
-  assert.equal(configured.config.idempotency_enabled, false);
+  assert.equal(configured.idempotency_enabled, false);
   assert.deepEqual(result.idempotency, {
     enabled: false,
     key: null,
@@ -373,12 +394,27 @@ test('I07 missing Data Table row fails safe with idempotency enabled', () => {
   const payload = run(clone(validInput));
   const configured = applyIdempotencyConfig({}, payload);
 
-  assert.equal(configured.config.idempotency_enabled, true);
-  assert.equal(configured.config.idempotency_config_source, 'data_table');
-  assert.equal(configured.config.idempotency_config_row_found, false);
+  assert.equal(configured.idempotency_enabled, true);
 });
 
 test('I08 sub-workflow maps every stored state to a parent decision', () => {
+  const routeNode = idempotencyWorkflow.nodes.find(
+    (node) => node.name === 'Route Claim Action',
+  );
+  assert.ok(routeNode);
+  assert.deepEqual(
+    routeNode.parameters.rules.values.map((rule) => rule.outputKey),
+    ['claimed', 'completed', 'processing', 'failed'],
+  );
+  assert.equal(
+    idempotencyWorkflow.connections['Claim Idempotency Key'].main[0][0].node,
+    'Route Claim Action',
+  );
+  assert.equal(
+    idempotencyWorkflow.connections['Route Claim Action'].main.length,
+    4,
+  );
+
   const expected = {
     claimed: [true, 'continue'],
     completed: [false, 'return_previous_result'],
@@ -390,10 +426,12 @@ test('I08 sub-workflow maps every stored state to a parent decision', () => {
     const result = executeFinalizeIdempotencyNode({
       all: () => [{
         json: {
-          idempotency: {
-            key: 'a'.repeat(64),
-            claim_action: claimAction,
-          },
+          idempotency_key: 'a'.repeat(64),
+          claim_action: claimAction,
+          stored_correlation_id: 'b2701e45-4d60-4e2f-a115-175c4d0582a4',
+          stored_status: claimAction === 'claimed' ? 'processing' : claimAction,
+          previous_result: null,
+          previous_error: null,
         },
       }],
     })[0].json;
@@ -402,4 +440,43 @@ test('I08 sub-workflow maps every stored state to a parent decision', () => {
     assert.equal(result.idempotency.should_continue, shouldContinue);
     assert.equal(result.idempotency.outcome, outcome);
   }
+});
+
+test('I09 each idempotency stage emits only its explicit contract', () => {
+  const normalized = run({
+    ...clone(validInput),
+    submission_reference: 'FORM-001',
+  });
+
+  const configured = applyIdempotencyConfig({
+    key: 'idempotency_enabled',
+    enabled: true,
+  }, normalized);
+  assert.deepEqual(Object.keys(configured).sort(), [
+    'correlation_id',
+    'email_normalized',
+    'idempotency_enabled',
+    'phone_normalized',
+    'submission_reference',
+  ]);
+
+  const keyed = generateIdempotencyKey(configured);
+  assert.deepEqual(Object.keys(keyed).sort(), [
+    'correlation_id',
+    'idempotency_key',
+  ]);
+
+  const finalized = executeFinalizeIdempotencyNode({
+    all: () => [{
+      json: {
+        claim_action: 'claimed',
+        idempotency_key: keyed.idempotency_key,
+        stored_correlation_id: keyed.correlation_id,
+        stored_status: 'processing',
+        previous_result: null,
+        previous_error: null,
+      },
+    }],
+  })[0].json;
+  assert.deepEqual(Object.keys(finalized), ['idempotency']);
 });

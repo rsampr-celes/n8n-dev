@@ -1,6 +1,5 @@
 return $input.all().map((item, index) => ({
   json: {
-    ...item.json,
     idempotency: {
       enabled: false,
       key: null,
