@@ -296,17 +296,20 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const normalizedInput = $('Normalize and Validate Lead').first().json;\nconst idempotencyResult = $input.first().json.idempotency;\n\nreturn [{\n  json: {\n    ...normalizedInput,\n    idempotency: idempotencyResult,\n  },\n}];\n"
+        "mode": "chooseBranch",
+        "numberInputs": 2,
+        "chooseBranchMode": "waitForAll",
+        "output": "specifiedInput",
+        "useDataOfInput": 1
       },
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
       "position": [
         1560,
         140
       ],
-      "id": "asset001-prepare-hubspot-match-input",
-      "name": "Prepare HubSpot Match Input"
+      "id": "asset001-wait-for-idempotency",
+      "name": "Wait for Idempotency"
     },
     {
       "parameters": {
@@ -403,6 +406,11 @@
             "node": "Execute Idempotency Guard",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Wait for Idempotency",
+            "type": "main",
+            "index": 0
           }
         ],
         [
@@ -429,9 +437,9 @@
       "main": [
         [
           {
-            "node": "Prepare HubSpot Match Input",
+            "node": "Wait for Idempotency",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ],
         [
@@ -443,7 +451,7 @@
         ]
       ]
     },
-    "Prepare HubSpot Match Input": {
+    "Wait for Idempotency": {
       "main": [
         [
           {

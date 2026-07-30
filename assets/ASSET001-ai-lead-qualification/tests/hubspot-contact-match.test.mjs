@@ -102,26 +102,38 @@ test('workflow contains only matching, routing, and decision nodes', () => {
 });
 
 test('main workflow calls contact matching after a new idempotency claim', () => {
-  const prepareNode = mainWorkflow.nodes.find(
-    (node) => node.name === 'Prepare HubSpot Match Input',
+  const gateNode = mainWorkflow.nodes.find(
+    (node) => node.name === 'Wait for Idempotency',
   );
   const executeNode = mainWorkflow.nodes.find(
     (node) => node.name === 'Execute HubSpot Contact Match',
   );
 
-  assert.ok(prepareNode);
+  assert.ok(gateNode);
   assert.ok(executeNode);
   assert.equal(
+    mainWorkflow.connections['Is Lead Valid?'].main[0][0].node,
+    'Execute Idempotency Guard',
+  );
+  assert.equal(
+    mainWorkflow.connections['Is Lead Valid?'].main[0][1].node,
+    'Wait for Idempotency',
+  );
+  assert.equal(
+    mainWorkflow.connections['Is Lead Valid?'].main[0][1].index,
+    0,
+  );
+  assert.equal(
     mainWorkflow.connections['Continue After Idempotency?'].main[0][0].node,
-    'Prepare HubSpot Match Input',
+    'Wait for Idempotency',
   );
   assert.equal(
-    mainWorkflow.connections['Prepare HubSpot Match Input'].main[0][0].node,
+    mainWorkflow.connections['Continue After Idempotency?'].main[0][0].index,
+    1,
+  );
+  assert.equal(
+    mainWorkflow.connections['Wait for Idempotency'].main[0][0].node,
     'Execute HubSpot Contact Match',
-  );
-  assert.equal(
-    mainWorkflow.connections['Execute HubSpot Contact Match'].main[0][0].node,
-    'Continue Qualification',
   );
   assert.equal(
     executeNode.parameters.workflowId.value,
@@ -129,31 +141,24 @@ test('main workflow calls contact matching after a new idempotency claim', () =>
   );
 });
 
-test('main workflow handoff restores normalized input and idempotency result', () => {
-  const prepareNode = mainWorkflow.nodes.find(
-    (node) => node.name === 'Prepare HubSpot Match Input',
+test('idempotency gate outputs the original normalized branch unchanged', () => {
+  const gateNode = mainWorkflow.nodes.find(
+    (node) => node.name === 'Wait for Idempotency',
   );
-  const executePrepare = new Function(
-    '$input',
-    '$',
-    prepareNode.parameters.jsCode,
+
+  assert.deepEqual(gateNode.parameters, {
+    mode: 'chooseBranch',
+    numberInputs: 2,
+    chooseBranchMode: 'waitForAll',
+    output: 'specifiedInput',
+    useDataOfInput: 1,
+  });
+  assert.equal(
+    mainWorkflow.nodes.some(
+      (node) => node.name === 'Prepare HubSpot Match Input',
+    ),
+    false,
   );
-  const idempotency = {
-    enabled: true,
-    key: 'a'.repeat(64),
-    claim_action: 'claimed',
-    should_continue: true,
-    outcome: 'continue',
-  };
-
-  const result = executePrepare(
-    { first: () => ({ json: { idempotency } }) },
-    nodeLookup({ 'Normalize and Validate Lead': normalizedInput }),
-  )[0].json;
-
-  assert.deepEqual(result.context, normalizedInput.context);
-  assert.deepEqual(result.lead, normalizedInput.lead);
-  assert.deepEqual(result.idempotency, idempotency);
 });
 
 test('HubSpot searches use exact filters and stop after two results', () => {
@@ -244,19 +249,19 @@ test('multiple phone matches return review', () => {
   assert.equal(evaluation.match.review_reason, 'multiple_phone_matches');
 });
 
-test('zero email and phone matches return create and preserve input', () => {
+test('zero email and phone matches return only the create decision', () => {
   const evaluation = runPhone([], runEmail([]));
   const result = finalize(evaluation);
 
-  assert.deepEqual(result.context, normalizedInput.context);
-  assert.deepEqual(result.lead, normalizedInput.lead);
-  assert.deepEqual(result.crm_match, {
-    decision: 'create',
-    status: 'not_found',
-    matched_by: null,
-    contact_id: null,
-    match_count: 0,
-    candidate_contact_ids: [],
-    review_reason: null,
+  assert.deepEqual(result, {
+    crm_match: {
+      decision: 'create',
+      status: 'not_found',
+      matched_by: null,
+      contact_id: null,
+      match_count: 0,
+      candidate_contact_ids: [],
+      review_reason: null,
+    },
   });
 });

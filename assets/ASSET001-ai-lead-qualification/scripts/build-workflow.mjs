@@ -52,10 +52,6 @@ const produceMatchDecisionSource = fs.readFileSync(
   path.join(sourceDirectory, 'produce-match-decision.js'),
   'utf8',
 );
-const prepareHubspotMatchInputSource = fs.readFileSync(
-  path.join(sourceDirectory, 'prepare-hubspot-match-input.js'),
-  'utf8',
-);
 const marker = '/*__AJV_STANDALONE_VALIDATOR__*/';
 
 if (!validationSource.includes(marker)) {
@@ -211,6 +207,7 @@ const managedNodeIds = new Set([
   'asset001-duplicate-handled',
   'asset001-prepare-hubspot-match-input',
   'asset001-execute-hubspot-match-subflow',
+  'asset001-wait-for-idempotency',
 ]);
 
 workflow.nodes = workflow.nodes.filter((node) => !managedNodeIds.has(node.id));
@@ -260,12 +257,20 @@ workflow.nodes.push(
     position: [1300, 220],
     leftValue: '={{ $json.idempotency.should_continue }}',
   }),
-  codeNode({
-    id: 'asset001-prepare-hubspot-match-input',
-    name: 'Prepare HubSpot Match Input',
+  {
+    parameters: {
+      mode: 'chooseBranch',
+      numberInputs: 2,
+      chooseBranchMode: 'waitForAll',
+      output: 'specifiedInput',
+      useDataOfInput: 1,
+    },
+    type: 'n8n-nodes-base.merge',
+    typeVersion: 3.2,
     position: [1560, 140],
-    jsCode: prepareHubspotMatchInputSource,
-  }),
+    id: 'asset001-wait-for-idempotency',
+    name: 'Wait for Idempotency',
+  },
   {
     parameters: {
       source: 'database',
@@ -319,7 +324,10 @@ workflow.connections = {
   },
   'Is Lead Valid?': {
     main: [
-      [{ node: 'Execute Idempotency Guard', type: 'main', index: 0 }],
+      [
+        { node: 'Execute Idempotency Guard', type: 'main', index: 0 },
+        { node: 'Wait for Idempotency', type: 'main', index: 0 },
+      ],
       [{ node: 'Record Validation Failure', type: 'main', index: 0 }],
     ],
   },
@@ -328,11 +336,11 @@ workflow.connections = {
   },
   'Continue After Idempotency?': {
     main: [
-      [{ node: 'Prepare HubSpot Match Input', type: 'main', index: 0 }],
+      [{ node: 'Wait for Idempotency', type: 'main', index: 1 }],
       [{ node: 'Duplicate Submission Handled', type: 'main', index: 0 }],
     ],
   },
-  'Prepare HubSpot Match Input': {
+  'Wait for Idempotency': {
     main: [[{ node: 'Execute HubSpot Contact Match', type: 'main', index: 0 }]],
   },
   'Execute HubSpot Contact Match': {

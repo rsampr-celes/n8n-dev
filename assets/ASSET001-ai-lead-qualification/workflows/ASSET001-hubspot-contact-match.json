@@ -174,7 +174,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return $input.all().map((item, index) => {\n  const payload = item.json;\n\n  return {\n    json: {\n      ...payload.normalized_input,\n      crm_match: payload.match,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "return $input.all().map((item, index) => {\n  return {\n    json: {\n      crm_match: item.json.match,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

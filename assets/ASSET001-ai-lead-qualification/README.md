@@ -47,17 +47,19 @@ boundary:
 - It retrieves at most two results from either search, which distinguishes no
   match, a unique match, and an ambiguous match without loading unnecessary
   contacts.
-- It appends a deterministic `crm_match` object containing the `create`,
-  `update`, or `review` decision to the unchanged normalized input.
+- It returns only a deterministic `crm_match` object containing the `create`,
+  `update`, or `review` decision. It does not accumulate or return the
+  normalized lead.
 
 Validation inside the sub-workflow, audit writes, retries, and a centralized
 error handler are intentionally deferred. A HubSpot node failure therefore
 fails the sub-workflow execution at this stage.
 
 The main workflow calls this sub-workflow after a new idempotency claim.
-**Prepare HubSpot Match Input** restores the normalized lead and combines it
-with the idempotency result, **Execute HubSpot Contact Match** waits for the
-matching decision, and the resulting payload continues through the existing
+**Wait for Idempotency** receives the original normalized item on input 1 and
+the successful idempotency control signal on input 2. It waits for both, outputs
+input 1 unchanged, and passes that same normalized JSON to **Execute HubSpot
+Contact Match**. The matching result then continues through the existing
 **Continue Qualification** boundary.
 
 The Postgres node expects an n8n credential named
@@ -153,7 +155,6 @@ src/bypass-idempotency.js
 src/evaluate-email-results.js
 src/evaluate-phone-results.js
 src/produce-match-decision.js
-src/prepare-hubspot-match-input.js
 scripts/build-workflow.mjs
 tests/validation.test.mjs
 tests/hubspot-contact-match.test.mjs
