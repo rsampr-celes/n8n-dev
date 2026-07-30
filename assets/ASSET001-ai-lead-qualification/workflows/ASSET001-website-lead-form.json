@@ -206,7 +206,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const FIELD_LABELS = {\n  first_name: 'First name',\n  last_name: 'Last name',\n  email_normalized: 'Email',\n  phone_normalized: 'Phone',\n  company: 'Company',\n  company_description: 'Company description',\n  company_website: 'Company website',\n  service_requested: 'Service requested',\n  message_sanitized: 'Message',\n  budget_band: 'Budget',\n  timeline_band: 'Timeline',\n  country: 'Country',\n  consent: 'Consent',\n};\n\nconst ALLOWED_FIELDS = new Set(Object.keys(FIELD_LABELS));\nconst REQUIRED_FIELDS = [\n  'first_name',\n  'last_name',\n  'email_normalized',\n  'message_sanitized',\n  'consent',\n];\nconst SERVICE_VALUES = new Set([\n  'api_integration',\n  'crm_automation',\n  'ai_workflow',\n  'data_integration',\n  'other',\n  null,\n]);\nconst BUDGET_VALUES = new Set([\n  'under_2500',\n  '2500_5000',\n  '5000_10000',\n  'over_10000',\n  'not_decided',\n  null,\n]);\nconst TIMELINE_VALUES = new Set([\n  'immediately',\n  'within_one_month',\n  'one_to_three_months',\n  'later',\n  'not_decided',\n  null,\n]);\n\nfunction messageFor(field, code) {\n  const label = FIELD_LABELS[field] || 'Submission';\n  return {\n    required: `${label} is required`,\n    invalid_type: `${label} has an invalid type`,\n    invalid_format: `${label} has an invalid format`,\n    invalid_enum: `${label} is not an allowed option`,\n    consent_required: 'Consent is required',\n    invalid_value: `${label} has an invalid value`,\n    min_length: `${label} is too short`,\n    max_length: `${label} is too long`,\n    unexpected_field: 'Submission contains an unexpected field',\n  }[code];\n}\n\nfunction validationError(field, keyword, code, details = {}, schemaPath) {\n  return {\n    field,\n    path: field === null ? '' : `/${String(field).replace(/~/g, '~0').replace(/\\//g, '~1')}`,\n    code,\n    message: messageFor(field, code),\n    keyword,\n    details,\n    schema_path: schemaPath,\n  };\n}\n\nfunction stringLength(value) {\n  return [...value].length;\n}\n\nfunction isHttpUrl(value) {\n  if (/\\s/.test(value)) return false;\n  const match = value.match(/^https?:\\/\\/([^/?#]+)(?:[/?#].*)?$/i);\n  if (!match) return false;\n\n  const authority = match[1];\n  if (authority.includes('@') || authority.startsWith('[')) return false;\n\n  const separator = authority.lastIndexOf(':');\n  const hasPort = separator > -1;\n  const hostname = hasPort ? authority.slice(0, separator) : authority;\n  const port = hasPort ? authority.slice(separator + 1) : null;\n\n  if (\n    port !== null &&\n    (!/^\\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)\n  ) {\n    return false;\n  }\n\n  if (hostname === 'localhost') return true;\n  const labels = hostname.split('.');\n  return labels.length >= 2 && labels.every(\n    (label) =>\n      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),\n  );\n}\n\nfunction validateString(errors, lead, field, { minLength, maxLength }) {\n  const value = lead[field];\n  if (value === undefined) return;\n  if (typeof value !== 'string') {\n    errors.push(validationError(\n      field,\n      'type',\n      'invalid_type',\n      { type: 'string' },\n      `#/properties/${field}/type`,\n    ));\n    return;\n  }\n  if (minLength !== undefined && stringLength(value) < minLength) {\n    errors.push(validationError(\n      field,\n      'minLength',\n      'min_length',\n      { limit: minLength },\n      `#/properties/${field}/minLength`,\n    ));\n  }\n  if (maxLength !== undefined && stringLength(value) > maxLength) {\n    errors.push(validationError(\n      field,\n      'maxLength',\n      'max_length',\n      { limit: maxLength },\n      `#/properties/${field}/maxLength`,\n    ));\n  }\n}\n\nfunction validateNullableString(errors, lead, field, maxLength) {\n  const value = lead[field];\n  if (value === undefined || value === null) return;\n  if (typeof value !== 'string') {\n    errors.push(validationError(\n      field,\n      'type',\n      'invalid_type',\n      { type: ['string', 'null'] },\n      `#/properties/${field}/type`,\n    ));\n    return;\n  }\n  if (stringLength(value) > maxLength) {\n    errors.push(validationError(\n      field,\n      'maxLength',\n      'max_length',\n      { limit: maxLength },\n      `#/properties/${field}/maxLength`,\n    ));\n  }\n}\n\nfunction validateEnum(errors, lead, field, allowedValues) {\n  const value = lead[field];\n  if (value === undefined) return;\n  if (!allowedValues.has(value)) {\n    errors.push(validationError(\n      field,\n      'enum',\n      'invalid_enum',\n      { allowedValues: [...allowedValues] },\n      `#/properties/${field}/enum`,\n    ));\n  }\n}\n\nfunction validateLead(lead) {\n  const errors = [];\n\n  if (!lead || typeof lead !== 'object' || Array.isArray(lead)) {\n    return [validationError(\n      null,\n      'type',\n      'invalid_type',\n      { type: 'object' },\n      '#/type',\n    )];\n  }\n\n  for (const field of Object.keys(lead)) {\n    if (!ALLOWED_FIELDS.has(field)) {\n      errors.push(validationError(\n        field,\n        'additionalProperties',\n        'unexpected_field',\n        {},\n        '#/additionalProperties',\n      ));\n    }\n  }\n\n  for (const field of REQUIRED_FIELDS) {\n    if (!Object.prototype.hasOwnProperty.call(lead, field)) {\n      errors.push(validationError(\n        field,\n        'required',\n        field === 'consent' ? 'consent_required' : 'required',\n        {},\n        '#/required',\n      ));\n    }\n  }\n\n  validateString(errors, lead, 'first_name', { minLength: 1, maxLength: 120 });\n  validateString(errors, lead, 'last_name', { minLength: 1, maxLength: 120 });\n  validateString(errors, lead, 'email_normalized', { maxLength: 254 });\n  validateString(errors, lead, 'message_sanitized', { minLength: 1, maxLength: 5000 });\n  validateNullableString(errors, lead, 'company', 160);\n  validateNullableString(errors, lead, 'company_description', 500);\n  validateNullableString(errors, lead, 'country', 100);\n\n  const email = lead.email_normalized;\n  if (\n    typeof email === 'string' &&\n    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)\n  ) {\n    errors.push(validationError(\n      'email_normalized',\n      'format',\n      'invalid_format',\n      { format: 'email' },\n      '#/properties/email_normalized/format',\n    ));\n  }\n\n  const phone = lead.phone_normalized;\n  if (phone !== undefined && phone !== null) {\n    if (typeof phone !== 'string') {\n      errors.push(validationError(\n        'phone_normalized',\n        'type',\n        'invalid_type',\n        { type: ['string', 'null'] },\n        '#/properties/phone_normalized/type',\n      ));\n    } else if (!/^\\+[1-9]\\d{6,14}$/.test(phone)) {\n      errors.push(validationError(\n        'phone_normalized',\n        'pattern',\n        'invalid_format',\n        {},\n        '#/properties/phone_normalized/pattern',\n      ));\n    }\n  }\n\n  const website = lead.company_website;\n  if (website !== undefined && website !== null) {\n    if (typeof website !== 'string') {\n      errors.push(validationError(\n        'company_website',\n        'type',\n        'invalid_type',\n        { type: ['string', 'null'] },\n        '#/properties/company_website/type',\n      ));\n    } else {\n      if (stringLength(website) > 2048) {\n        errors.push(validationError(\n          'company_website',\n          'maxLength',\n          'max_length',\n          { limit: 2048 },\n          '#/properties/company_website/maxLength',\n        ));\n      }\n      if (!isHttpUrl(website)) {\n        errors.push(validationError(\n          'company_website',\n          'format',\n          'invalid_format',\n          { format: 'uri' },\n          '#/properties/company_website/format',\n        ));\n      }\n    }\n  }\n\n  validateEnum(errors, lead, 'service_requested', SERVICE_VALUES);\n  validateEnum(errors, lead, 'budget_band', BUDGET_VALUES);\n  validateEnum(errors, lead, 'timeline_band', TIMELINE_VALUES);\n\n  if (Object.prototype.hasOwnProperty.call(lead, 'consent') && lead.consent !== true) {\n    errors.push(validationError(\n      'consent',\n      'const',\n      'consent_required',\n      {},\n      '#/properties/consent/const',\n    ));\n  }\n\n  return errors;\n}\n\nreturn $input.all().map((item, index) => {\n  const errors = validateLead(item.json.lead);\n\n  return {\n    json: {\n      validation: {\n        is_valid: errors.length === 0,\n        errors,\n        warnings: [],\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "const FIELD_LABELS = {\n  first_name: 'First name',\n  last_name: 'Last name',\n  email_normalized: 'Email',\n  phone_normalized: 'Phone',\n  company: 'Company',\n  company_description: 'Company description',\n  company_website: 'Company website',\n  service_requested: 'Service requested',\n  message_sanitized: 'Message',\n  budget_band: 'Budget',\n  timeline_band: 'Timeline',\n  country: 'Country',\n  consent: 'Consent',\n};\n\nconst ALLOWED_FIELDS = new Set(Object.keys(FIELD_LABELS));\nconst REQUIRED_FIELDS = [\n  'first_name',\n  'last_name',\n  'email_normalized',\n  'message_sanitized',\n  'consent',\n];\nconst SERVICE_VALUES = new Set([\n  'api_integration',\n  'crm_automation',\n  'ai_workflow',\n  'data_integration',\n  'other',\n  null,\n]);\nconst BUDGET_VALUES = new Set([\n  'under_2500',\n  '2500_5000',\n  '5000_10000',\n  'over_10000',\n  'not_decided',\n  null,\n]);\nconst TIMELINE_VALUES = new Set([\n  'immediately',\n  'within_one_month',\n  'one_to_three_months',\n  'later',\n  'not_decided',\n  null,\n]);\n\nfunction messageFor(field, code) {\n  const label = FIELD_LABELS[field] || 'Submission';\n  return {\n    required: `${label} is required`,\n    invalid_type: `${label} has an invalid type`,\n    invalid_format: `${label} has an invalid format`,\n    invalid_enum: `${label} is not an allowed option`,\n    consent_required: 'Consent is required',\n    invalid_value: `${label} has an invalid value`,\n    min_length: `${label} is too short`,\n    max_length: `${label} is too long`,\n    unexpected_field: 'Submission contains an unexpected field',\n  }[code];\n}\n\nfunction validationError(field, keyword, code, details = {}, schemaPath) {\n  return {\n    field,\n    path: field === null ? '' : `/${String(field).replace(/~/g, '~0').replace(/\\//g, '~1')}`,\n    code,\n    message: messageFor(field, code),\n    keyword,\n    details,\n    schema_path: schemaPath,\n  };\n}\n\nfunction stringLength(value) {\n  return [...value].length;\n}\n\nfunction isHttpUrl(value) {\n  if (/\\s/.test(value)) return false;\n  const match = value.match(/^https?:\\/\\/([^/?#]+)(?:[/?#].*)?$/i);\n  if (!match) return false;\n\n  const authority = match[1];\n  if (authority.includes('@') || authority.startsWith('[')) return false;\n\n  const separator = authority.lastIndexOf(':');\n  const hasPort = separator > -1;\n  const hostname = hasPort ? authority.slice(0, separator) : authority;\n  const port = hasPort ? authority.slice(separator + 1) : null;\n\n  if (\n    port !== null &&\n    (!/^\\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)\n  ) {\n    return false;\n  }\n\n  if (hostname === 'localhost') return true;\n  const labels = hostname.split('.');\n  return labels.length >= 2 && labels.every(\n    (label) =>\n      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),\n  );\n}\n\nfunction validateString(errors, lead, field, { minLength, maxLength }) {\n  const value = lead[field];\n  if (value === undefined) return;\n  if (typeof value !== 'string') {\n    errors.push(validationError(\n      field,\n      'type',\n      'invalid_type',\n      { type: 'string' },\n      `#/properties/${field}/type`,\n    ));\n    return;\n  }\n  if (minLength !== undefined && stringLength(value) < minLength) {\n    errors.push(validationError(\n      field,\n      'minLength',\n      'min_length',\n      { limit: minLength },\n      `#/properties/${field}/minLength`,\n    ));\n  }\n  if (maxLength !== undefined && stringLength(value) > maxLength) {\n    errors.push(validationError(\n      field,\n      'maxLength',\n      'max_length',\n      { limit: maxLength },\n      `#/properties/${field}/maxLength`,\n    ));\n  }\n}\n\nfunction validateNullableString(errors, lead, field, maxLength) {\n  const value = lead[field];\n  if (value === undefined || value === null) return;\n  if (typeof value !== 'string') {\n    errors.push(validationError(\n      field,\n      'type',\n      'invalid_type',\n      { type: ['string', 'null'] },\n      `#/properties/${field}/type`,\n    ));\n    return;\n  }\n  if (stringLength(value) > maxLength) {\n    errors.push(validationError(\n      field,\n      'maxLength',\n      'max_length',\n      { limit: maxLength },\n      `#/properties/${field}/maxLength`,\n    ));\n  }\n}\n\nfunction validateEnum(errors, lead, field, allowedValues) {\n  const value = lead[field];\n  if (value === undefined) return;\n  if (!allowedValues.has(value)) {\n    errors.push(validationError(\n      field,\n      'enum',\n      'invalid_enum',\n      { allowedValues: [...allowedValues] },\n      `#/properties/${field}/enum`,\n    ));\n  }\n}\n\nfunction validateLead(lead) {\n  const errors = [];\n\n  if (!lead || typeof lead !== 'object' || Array.isArray(lead)) {\n    return [validationError(\n      null,\n      'type',\n      'invalid_type',\n      { type: 'object' },\n      '#/type',\n    )];\n  }\n\n  for (const field of Object.keys(lead)) {\n    if (!ALLOWED_FIELDS.has(field)) {\n      errors.push(validationError(\n        field,\n        'additionalProperties',\n        'unexpected_field',\n        {},\n        '#/additionalProperties',\n      ));\n    }\n  }\n\n  for (const field of REQUIRED_FIELDS) {\n    if (!Object.prototype.hasOwnProperty.call(lead, field)) {\n      errors.push(validationError(\n        field,\n        'required',\n        field === 'consent' ? 'consent_required' : 'required',\n        {},\n        '#/required',\n      ));\n    }\n  }\n\n  validateString(errors, lead, 'first_name', { minLength: 1, maxLength: 120 });\n  validateString(errors, lead, 'last_name', { minLength: 1, maxLength: 120 });\n  validateString(errors, lead, 'email_normalized', { maxLength: 254 });\n  validateString(errors, lead, 'message_sanitized', { minLength: 1, maxLength: 5000 });\n  validateNullableString(errors, lead, 'company', 160);\n  validateNullableString(errors, lead, 'company_description', 500);\n  validateNullableString(errors, lead, 'country', 100);\n\n  const email = lead.email_normalized;\n  if (\n    typeof email === 'string' &&\n    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)\n  ) {\n    errors.push(validationError(\n      'email_normalized',\n      'format',\n      'invalid_format',\n      { format: 'email' },\n      '#/properties/email_normalized/format',\n    ));\n  }\n\n  const phone = lead.phone_normalized;\n  if (phone !== undefined && phone !== null) {\n    if (typeof phone !== 'string') {\n      errors.push(validationError(\n        'phone_normalized',\n        'type',\n        'invalid_type',\n        { type: ['string', 'null'] },\n        '#/properties/phone_normalized/type',\n      ));\n    } else if (!/^\\+[1-9]\\d{6,14}$/.test(phone)) {\n      errors.push(validationError(\n        'phone_normalized',\n        'pattern',\n        'invalid_format',\n        {},\n        '#/properties/phone_normalized/pattern',\n      ));\n    }\n  }\n\n  const website = lead.company_website;\n  if (website !== undefined && website !== null) {\n    if (typeof website !== 'string') {\n      errors.push(validationError(\n        'company_website',\n        'type',\n        'invalid_type',\n        { type: ['string', 'null'] },\n        '#/properties/company_website/type',\n      ));\n    } else {\n      if (stringLength(website) > 2048) {\n        errors.push(validationError(\n          'company_website',\n          'maxLength',\n          'max_length',\n          { limit: 2048 },\n          '#/properties/company_website/maxLength',\n        ));\n      }\n      if (!isHttpUrl(website)) {\n        errors.push(validationError(\n          'company_website',\n          'format',\n          'invalid_format',\n          { format: 'uri' },\n          '#/properties/company_website/format',\n        ));\n      }\n    }\n  }\n\n  validateEnum(errors, lead, 'service_requested', SERVICE_VALUES);\n  validateEnum(errors, lead, 'budget_band', BUDGET_VALUES);\n  validateEnum(errors, lead, 'timeline_band', TIMELINE_VALUES);\n\n  if (Object.prototype.hasOwnProperty.call(lead, 'consent') && lead.consent !== true) {\n    errors.push(validationError(\n      'consent',\n      'const',\n      'consent_required',\n      {},\n      '#/properties/consent/const',\n    ));\n  }\n\n  return errors;\n}\n\nreturn $input.all().map((item, index) => {\n  const errors = validateLead(item.json.lead);\n\n  return {\n    json: {\n      ...(errors.length === 0 ? item.json : {}),\n      validation: {\n        is_valid: errors.length === 0,\n        errors,\n        warnings: [],\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -250,23 +250,6 @@
       ],
       "id": "asset001-is-valid",
       "name": "Is Lead Valid?"
-    },
-    {
-      "parameters": {
-        "mode": "chooseBranch",
-        "numberInputs": 2,
-        "chooseBranchMode": "waitForAll",
-        "output": "specifiedInput",
-        "useDataOfInput": 1
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        1300,
-        220
-      ],
-      "id": "asset001-use-normalized-input",
-      "name": "Use Normalized Input"
     },
     {
       "parameters": {
@@ -334,23 +317,6 @@
     },
     {
       "parameters": {
-        "mode": "chooseBranch",
-        "numberInputs": 2,
-        "chooseBranchMode": "waitForAll",
-        "output": "specifiedInput",
-        "useDataOfInput": 1
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        2080,
-        140
-      ],
-      "id": "asset001-wait-for-idempotency",
-      "name": "Wait for Idempotency"
-    },
-    {
-      "parameters": {
         "source": "database",
         "workflowId": {
           "__rl": true,
@@ -382,23 +348,8 @@
     },
     {
       "parameters": {
-        "mode": "combine",
-        "combineBy": "combineByPosition",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3.2,
-      "position": [
-        2600,
-        140
-      ],
-      "id": "asset001-merge-qualification-context",
-      "name": "Merge Qualification Context"
-    },
-    {
-      "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return $input.all().map((item, index) => {\n  const crmMatch = item.json.crm_match ?? null;\n  const hubspotSearchSuccess = item.json.hubspot_search_success === true;\n  const crmAction = item.json.crm_action ?? crmMatch?.decision ?? null;\n  const continueToAi =\n    hubspotSearchSuccess === true &&\n    ['create', 'update'].includes(crmAction);\n\n  let skipReason = null;\n  if (!continueToAi) {\n    if (!hubspotSearchSuccess) {\n      skipReason = 'hubspot_search_failed';\n    } else if (crmAction === 'review') {\n      skipReason = crmMatch?.review_reason ?? 'ambiguous_crm_match';\n    } else {\n      skipReason = 'unsupported_crm_action';\n    }\n  }\n\n  return {\n    json: {\n      ...item.json,\n      hubspot_search_success: hubspotSearchSuccess,\n      crm_action: crmAction,\n      continue_to_ai: continueToAi,\n      ai_skip_reason: skipReason,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "return $input.all().map((item, index) => {\n  const crmMatch = item.json.crm_match ?? null;\n  const hubspotSearchSuccess = item.json.hubspot_search_success === true;\n  const crmAction = item.json.crm_action ?? crmMatch?.decision ?? null;\n  const continueToAi =\n    hubspotSearchSuccess === true &&\n    ['create', 'update'].includes(crmAction);\n\n  let skipReason = null;\n  if (!continueToAi) {\n    if (!hubspotSearchSuccess) {\n      skipReason = 'hubspot_search_failed';\n    } else if (crmAction === 'review') {\n      skipReason = crmMatch?.review_reason ?? 'ambiguous_crm_match';\n    } else {\n      skipReason = 'unsupported_crm_action';\n    }\n  }\n\n  return {\n    json: {\n      continue_to_ai: continueToAi,\n      ai_skip_reason: skipReason,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -453,11 +404,53 @@
         },
         "workflowInputs": {
           "mappingMode": "defineBelow",
-          "value": {},
+          "value": {
+            "lead": "={{ $('Continue After Idempotency?').first().json.lead }}",
+            "hubspot_search_success": "={{ $('Execute HubSpot Contact Match').first().json.hubspot_search_success }}",
+            "crm_action": "={{ $('Execute HubSpot Contact Match').first().json.crm_action }}",
+            "crm_match": "={{ $('Execute HubSpot Contact Match').first().json.crm_match }}"
+          },
           "matchingColumns": [],
-          "schema": [],
+          "schema": [
+            {
+              "id": "lead",
+              "displayName": "lead",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            },
+            {
+              "id": "hubspot_search_success",
+              "displayName": "hubspot_search_success",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "boolean"
+            },
+            {
+              "id": "crm_action",
+              "displayName": "crm_action",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "crm_match",
+              "displayName": "crm_match",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "object"
+            }
+          ],
           "attemptToConvertTypes": false,
-          "convertFieldsToString": true
+          "convertFieldsToString": false
         },
         "mode": "once",
         "options": {
@@ -538,11 +531,6 @@
             "node": "Validate Lead",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Use Normalized Input",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -562,30 +550,14 @@
       "main": [
         [
           {
-            "node": "Use Normalized Input",
+            "node": "Execute Idempotency Guard",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ],
         [
           {
             "node": "Record Validation Failure",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Use Normalized Input": {
-      "main": [
-        [
-          {
-            "node": "Execute Idempotency Guard",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Wait for Idempotency",
             "type": "main",
             "index": 0
           }
@@ -607,9 +579,9 @@
       "main": [
         [
           {
-            "node": "Wait for Idempotency",
+            "node": "Execute HubSpot Contact Match",
             "type": "main",
-            "index": 1
+            "index": 0
           }
         ],
         [
@@ -621,34 +593,7 @@
         ]
       ]
     },
-    "Wait for Idempotency": {
-      "main": [
-        [
-          {
-            "node": "Execute HubSpot Contact Match",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Merge Qualification Context",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Execute HubSpot Contact Match": {
-      "main": [
-        [
-          {
-            "node": "Merge Qualification Context",
-            "type": "main",
-            "index": 1
-          }
-        ]
-      ]
-    },
-    "Merge Qualification Context": {
       "main": [
         [
           {

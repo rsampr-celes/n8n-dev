@@ -9,13 +9,17 @@ return $input.all().map((item, index) => {
   const claim = item.json;
   const claimAction = claim.claim_action;
   const outcome = OUTCOMES[claimAction];
+  const shouldContinue = claimAction === 'claimed';
 
   if (!outcome) {
     throw new Error(`Unsupported idempotency claim action: ${claimAction}`);
   }
 
+  const workflowInput = $('When Executed by Another Workflow').first().json;
+
   return {
     json: {
+      ...(shouldContinue ? { lead: workflowInput.lead } : {}),
       idempotency: {
         enabled: true,
         key: claim.idempotency_key,
@@ -24,7 +28,7 @@ return $input.all().map((item, index) => {
         stored_status: claim.stored_status,
         previous_result: claim.previous_result ?? null,
         previous_error: claim.previous_error ?? null,
-        should_continue: claimAction === 'claimed',
+        should_continue: shouldContinue,
         outcome,
       },
     },

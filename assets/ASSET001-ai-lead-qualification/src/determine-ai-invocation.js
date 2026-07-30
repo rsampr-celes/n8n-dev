@@ -19,9 +19,6 @@ return $input.all().map((item, index) => {
 
   return {
     json: {
-      ...item.json,
-      hubspot_search_success: hubspotSearchSuccess,
-      crm_action: crmAction,
       continue_to_ai: continueToAi,
       ai_skip_reason: skipReason,
     },

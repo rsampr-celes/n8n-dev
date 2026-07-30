@@ -15,15 +15,13 @@ The workflow captures:
 - Required consent
 
 The form feeds separate **Normalize Lead** and **Validate Lead** Code nodes.
-Native JavaScript first produces only `{ lead }`. A separate plain-JavaScript
-validator checks that lead and produces only `{ validation }`. An IF node
-routes valid and invalid leads separately.
+Native JavaScript first produces `{ lead }`. A separate plain-JavaScript
+validator adds `{ validation }`, preserving the normalized lead only for valid
+items. An IF node routes valid and invalid leads separately.
 
 Valid leads now pass through a configurable idempotency sub-workflow before
 qualification:
 
-- **Use Normalized Input** waits for a successful validation signal, then emits
-  the original `{ lead }` normalization branch unchanged.
 - **Execute Idempotency Guard** calls `ASSET001 - Idempotency Guard`.
 - The sub-workflow reads the `idempotency_enabled` row from the
   `asset001_runtime_config` n8n Data Table.
@@ -59,13 +57,15 @@ Validation inside the sub-workflow, audit writes, retries, and a centralized
 error handler are intentionally deferred. A HubSpot node failure therefore
 fails the sub-workflow execution at this stage.
 
-The main workflow calls this sub-workflow after a new idempotency claim.
-**Wait for Idempotency** receives the original normalized item on input 1 and
-the successful idempotency control signal on input 2. It waits for both, outputs
-input 1 unchanged, and passes that same normalized JSON to **Execute HubSpot
-Contact Match**. The matching result then continues through the existing
-the HubSpot result is merged with the preserved normalized lead. **Determine AI
-Invocation** allows only successful `create` and `update` outcomes to continue.
+The idempotency sub-workflow returns the normalized lead only when qualification
+should continue: for a new claim or when idempotency is disabled. **Continue
+After Idempotency?** then sends that result directly to **Execute HubSpot
+Contact Match**. **Determine AI Invocation** reads the already-executed
+HubSpot result and emits only the AI-routing decision. It allows only successful
+`create` and `update` outcomes to continue. On the true branch, **Execute AI
+Qualification** maps the required lead and CRM fields directly from their
+earlier nodes into the AI sub-workflow's typed inputs. No preparation or merge
+node is needed.
 Ambiguous matches and failed searches end at **Route Without AI**.
 
 A separate **AI Qualification** sub-workflow:

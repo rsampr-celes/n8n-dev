@@ -99,42 +99,26 @@ test('workflow contains only matching, routing, and decision nodes', () => {
 });
 
 test('main workflow calls contact matching after a new idempotency claim', () => {
-  const gateNode = mainWorkflow.nodes.find(
-    (node) => node.name === 'Wait for Idempotency',
-  );
   const executeNode = mainWorkflow.nodes.find(
     (node) => node.name === 'Execute HubSpot Contact Match',
   );
 
-  assert.ok(gateNode);
   assert.ok(executeNode);
   assert.equal(
     mainWorkflow.connections['Is Lead Valid?'].main[0][0].node,
-    'Use Normalized Input',
-  );
-  assert.equal(
-    mainWorkflow.connections['Use Normalized Input'].main[0][0].node,
     'Execute Idempotency Guard',
   );
   assert.equal(
-    mainWorkflow.connections['Use Normalized Input'].main[0][1].node,
-    'Wait for Idempotency',
-  );
-  assert.equal(
-    mainWorkflow.connections['Use Normalized Input'].main[0][1].index,
-    0,
-  );
-  assert.equal(
     mainWorkflow.connections['Continue After Idempotency?'].main[0][0].node,
-    'Wait for Idempotency',
+    'Execute HubSpot Contact Match',
   );
   assert.equal(
     mainWorkflow.connections['Continue After Idempotency?'].main[0][0].index,
-    1,
+    0,
   );
   assert.equal(
-    mainWorkflow.connections['Wait for Idempotency'].main[0][0].node,
-    'Execute HubSpot Contact Match',
+    mainWorkflow.connections['Continue After Idempotency?'].main[0].length,
+    1,
   );
   assert.equal(
     executeNode.parameters.workflowId.value,
@@ -142,23 +126,21 @@ test('main workflow calls contact matching after a new idempotency claim', () =>
   );
 });
 
-test('idempotency gate outputs the original normalized branch unchanged', () => {
-  const gateNode = mainWorkflow.nodes.find(
-    (node) => node.name === 'Wait for Idempotency',
-  );
-
-  assert.deepEqual(gateNode.parameters, {
-    mode: 'chooseBranch',
-    numberInputs: 2,
-    chooseBranchMode: 'waitForAll',
-    output: 'specifiedInput',
-    useDataOfInput: 1,
-  });
+test('idempotency result carries the lead without a redundant wait merge', () => {
   assert.equal(
-    mainWorkflow.nodes.some(
-      (node) => node.name === 'Prepare HubSpot Match Input',
-    ),
+    mainWorkflow.nodes.some((node) => node.name === 'Wait for Idempotency'),
     false,
+  );
+});
+
+test('HubSpot result continues without a redundant qualification merge', () => {
+  assert.equal(
+    mainWorkflow.nodes.some((node) => node.name === 'Merge Qualification Context'),
+    false,
+  );
+  assert.equal(
+    mainWorkflow.connections['Execute HubSpot Contact Match'].main[0][0].node,
+    'Determine AI Invocation',
   );
 });
 

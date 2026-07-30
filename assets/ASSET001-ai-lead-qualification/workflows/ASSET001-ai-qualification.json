@@ -4,7 +4,27 @@
   "nodes": [
     {
       "parameters": {
-        "inputSource": "passthrough"
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "lead",
+              "type": "object"
+            },
+            {
+              "name": "hubspot_search_success",
+              "type": "boolean"
+            },
+            {
+              "name": "crm_action",
+              "type": "string"
+            },
+            {
+              "name": "crm_match",
+              "type": "object"
+            }
+          ]
+        }
       },
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.2,

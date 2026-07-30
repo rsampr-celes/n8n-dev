@@ -311,6 +311,7 @@ return $input.all().map((item, index) => {
 
   return {
     json: {
+      ...(errors.length === 0 ? item.json : {}),
       validation: {
         is_valid: errors.length === 0,
         errors,

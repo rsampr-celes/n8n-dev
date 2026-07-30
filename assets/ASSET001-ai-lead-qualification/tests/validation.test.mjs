@@ -24,10 +24,6 @@ const executeNormalizeNode = new Function('require', '$input', normalizeNode.par
 const validateNode = workflow.nodes.find((node) => node.name === 'Validate Lead');
 assert.ok(validateNode, 'Validate Lead node is missing');
 const executeValidateNode = new Function('require', '$input', validateNode.parameters.jsCode);
-const useNormalizedInputNode = workflow.nodes.find(
-  (node) => node.name === 'Use Normalized Input',
-);
-assert.ok(useNormalizedInputNode, 'Use Normalized Input node is missing');
 const idempotencyNode = idempotencyWorkflow.nodes.find(
   (node) => node.name === 'Generate Idempotency Key',
 );
@@ -43,6 +39,7 @@ const finalizeIdempotencyNode = idempotencyWorkflow.nodes.find(
 assert.ok(finalizeIdempotencyNode, 'Finalize Idempotency Result node is missing');
 const executeFinalizeIdempotencyNode = new Function(
   '$input',
+  '$',
   finalizeIdempotencyNode.parameters.jsCode,
 );
 const bypassIdempotencyNode = idempotencyWorkflow.nodes.find(
@@ -51,6 +48,7 @@ const bypassIdempotencyNode = idempotencyWorkflow.nodes.find(
 assert.ok(bypassIdempotencyNode, 'Bypass Idempotency node is missing');
 const executeBypassIdempotencyNode = new Function(
   '$input',
+  '$',
   bypassIdempotencyNode.parameters.jsCode,
 );
 const applyIdempotencyConfigNode = idempotencyWorkflow.nodes.find(
@@ -132,6 +130,27 @@ function applyIdempotencyConfig(configRow, payload) {
   )[0].json;
 }
 
+function workflowInputLookup(payload) {
+  return (nodeName) => {
+    assert.equal(nodeName, 'When Executed by Another Workflow');
+    return { first: () => ({ json: payload }) };
+  };
+}
+
+function finalizeIdempotency(claim, payload) {
+  return executeFinalizeIdempotencyNode(
+    { all: () => [{ json: claim }] },
+    workflowInputLookup(payload),
+  )[0].json;
+}
+
+function bypassIdempotency(configured, payload) {
+  return executeBypassIdempotencyNode(
+    { all: () => [{ json: configured }] },
+    workflowInputLookup(payload),
+  )[0].json;
+}
+
 test('form exposes separate required first-name and last-name fields', () => {
   const formNode = workflow.nodes.find((node) => node.name === 'Website Lead Form');
   const fields = formNode.parameters.formFields.values;
@@ -169,6 +188,16 @@ test('normalization and validation are separate workflow stages', () => {
 
   const validated = validate(normalized);
   assert.equal(validated.validation.is_valid, true);
+  assert.deepEqual(Object.keys(validated), ['lead', 'validation']);
+  assert.deepEqual(validated.lead, normalized.lead);
+});
+
+test('invalid validation output does not carry submitted lead data', () => {
+  const input = clone(validInput);
+  delete input.first_name;
+  const validated = validate(normalize(input));
+
+  assert.equal(validated.validation.is_valid, false);
   assert.deepEqual(Object.keys(validated), ['validation']);
   assert.equal(Object.hasOwn(validated, 'lead'), false);
 });
@@ -180,31 +209,31 @@ test('validation is self-contained plain JavaScript', () => {
   assert.doesNotMatch(normalizeNode.parameters.jsCode, /\bnew URL\s*\(/);
 });
 
-test('sub-workflow handoff contains only normalized input', () => {
+test('valid branch starts idempotency without a redundant normalization merge', () => {
   const normalized = normalize(clone(validInput));
+  const validated = validate(normalized);
   assert.deepEqual(Object.keys(normalized), ['lead']);
-  assert.equal(useNormalizedInputNode.type, 'n8n-nodes-base.merge');
-  assert.equal(useNormalizedInputNode.parameters.output, 'specifiedInput');
-  assert.equal(useNormalizedInputNode.parameters.useDataOfInput, 1);
+  assert.deepEqual(validated.lead, normalized.lead);
+  assert.equal(
+    workflow.nodes.some((node) => node.name === 'Use Normalized Input'),
+    false,
+  );
   assert.equal(
     workflow.connections['Is Lead Valid?'].main[0][0].node,
-    'Use Normalized Input',
+    'Execute Idempotency Guard',
   );
   assert.equal(
     workflow.connections['Is Lead Valid?'].main[0][0].index,
-    1,
-  );
-  assert.equal(
-    workflow.connections['Normalize Lead'].main[0][1].node,
-    'Use Normalized Input',
-  );
-  assert.equal(
-    workflow.connections['Normalize Lead'].main[0][1].index,
     0,
   );
-  assert.deepEqual(
-    workflow.connections['Use Normalized Input'].main[0].map(({ node }) => node),
-    ['Execute Idempotency Guard', 'Wait for Idempotency'],
+  assert.equal(
+    workflow.connections['Normalize Lead'].main[0][0].node,
+    'Validate Lead',
+  );
+  assert.equal(workflow.connections['Normalize Lead'].main[0].length, 1);
+  assert.equal(
+    workflow.nodes.some((node) => node.name === 'Wait for Idempotency'),
+    false,
   );
 });
 
@@ -438,7 +467,7 @@ test('I04 claim happens before qualification and handles every stored state', ()
     false,
   );
   assert.equal(
-    workflow.connections['Use Normalized Input'].main[0][0].node,
+    workflow.connections['Is Lead Valid?'].main[0][0].node,
     'Execute Idempotency Guard',
   );
   assert.equal(idempotencyWorkflow.settings.callerPolicy, 'workflowsFromAList');
@@ -481,11 +510,10 @@ test('I06 Data Table false bypasses idempotency and continues', () => {
     key: 'idempotency_enabled',
     enabled: false,
   }, payload);
-  const result = executeBypassIdempotencyNode({
-    all: () => [{ json: configured }],
-  })[0].json;
+  const result = bypassIdempotency(configured, payload);
 
   assert.equal(configured.idempotency_enabled, false);
+  assert.deepEqual(result.lead, payload.lead);
   assert.deepEqual(result.idempotency, {
     enabled: false,
     key: null,
@@ -526,24 +554,23 @@ test('I08 sub-workflow maps every stored state to a parent decision', () => {
     processing: [false, 'accepted_in_progress'],
     failed: [false, 'authorized_safe_replay_required'],
   };
+  const payload = normalize(clone(validInput));
 
   for (const [claimAction, [shouldContinue, outcome]] of Object.entries(expected)) {
-    const result = executeFinalizeIdempotencyNode({
-      all: () => [{
-        json: {
-          idempotency_key: 'a'.repeat(64),
-          claim_action: claimAction,
-          stored_correlation_id: 'b2701e45-4d60-4e2f-a115-175c4d0582a4',
-          stored_status: claimAction === 'claimed' ? 'processing' : claimAction,
-          previous_result: null,
-          previous_error: null,
-        },
-      }],
-    })[0].json;
+    const result = finalizeIdempotency({
+      idempotency_key: 'a'.repeat(64),
+      claim_action: claimAction,
+      stored_correlation_id: 'b2701e45-4d60-4e2f-a115-175c4d0582a4',
+      stored_status: claimAction === 'claimed' ? 'processing' : claimAction,
+      previous_result: null,
+      previous_error: null,
+    }, payload);
 
     assert.equal(result.idempotency.enabled, true);
     assert.equal(result.idempotency.should_continue, shouldContinue);
     assert.equal(result.idempotency.outcome, outcome);
+    assert.equal(Object.hasOwn(result, 'lead'), shouldContinue);
+    if (shouldContinue) assert.deepEqual(result.lead, payload.lead);
   }
 });
 
@@ -571,17 +598,14 @@ test('I09 each idempotency stage emits only its explicit contract', () => {
     'idempotency_key',
   ]);
 
-  const finalized = executeFinalizeIdempotencyNode({
-    all: () => [{
-      json: {
-        claim_action: 'claimed',
-        idempotency_key: keyed.idempotency_key,
-        stored_correlation_id: keyed.correlation_id,
-        stored_status: 'processing',
-        previous_result: null,
-        previous_error: null,
-      },
-    }],
-  })[0].json;
-  assert.deepEqual(Object.keys(finalized), ['idempotency']);
+  const finalized = finalizeIdempotency({
+    claim_action: 'claimed',
+    idempotency_key: keyed.idempotency_key,
+    stored_correlation_id: keyed.correlation_id,
+    stored_status: 'processing',
+    previous_result: null,
+    previous_error: null,
+  }, normalized);
+  assert.deepEqual(Object.keys(finalized), ['lead', 'idempotency']);
+  assert.deepEqual(finalized.lead, normalized.lead);
 });

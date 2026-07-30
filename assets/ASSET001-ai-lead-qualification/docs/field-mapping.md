@@ -120,10 +120,13 @@ Destination:
 }
 ```
 
-**Validate Lead** emits a separate `{ validation }` result for **Is Lead
-Valid?** without carrying `lead`. On the valid branch, **Use Normalized Input**
-waits for that signal and emits only the original `{ lead }` branch shown
-above. Consequently, neither sub-workflow receives `validation`.
+For valid items, **Validate Lead** preserves `{ lead }` and adds `{ validation }`
+for **Is Lead Valid?**. Invalid output contains only `{ validation }`, keeping
+submitted lead data out of the failure boundary. The valid branch starts
+**Execute Idempotency Guard** directly.
+When the guard authorizes continuation, it returns the original `lead` with its
+`idempotency` decision but omits `validation`. **Continue After Idempotency?**
+then sends that item to HubSpot matching.
 
 ### 2. Execute Idempotency Guard → Apply Idempotency Configuration
 
@@ -213,8 +216,10 @@ Source: the stage 4 destination.
 
 `Route Claim Action` exposes four labeled execution paths in the n8n canvas:
 `claimed`, `completed`, `processing`, and `failed`. All four paths converge on
-`Finalize Idempotency Result`, which emits the common response contract below.
-The selected route is visible in each execution.
+`Finalize Idempotency Result`, which emits the idempotency response contract
+below. A `claimed` result also includes the original top-level `lead`, allowing
+the parent flow to continue without a merge node. Non-continuing results omit
+`lead`. The selected route is visible in each execution.
 
 Destination:
 
@@ -245,6 +250,9 @@ Destination:
 
 Source: the stage 2 destination when `idempotency_enabled=false`.
 
+The bypass result includes the original top-level `lead` alongside the
+idempotency response so the parent can continue directly.
+
 Destination:
 
 ```json
@@ -264,8 +272,8 @@ Destination:
 `Is Lead Valid?`, `Is Idempotency Enabled?`, `Continue After Idempotency?`,
 and `Invoke AI?` route items but do not change their JSON.
 
-After idempotency, the parent sends the normalized lead to HubSpot matching and
-also preserves it in `Merge Qualification Context`. The HubSpot child returns:
+After idempotency, the parent sends the normalized lead to HubSpot matching.
+The HubSpot child returns:
 
 ```json
 {
@@ -283,8 +291,11 @@ also preserves it in `Merge Qualification Context`. The HubSpot child returns:
 }
 ```
 
-`Determine AI Invocation` adds `continue_to_ai=true` only for successful
-`create` and `update` outcomes. The AI child then sends only
+`Determine AI Invocation` emits only `continue_to_ai` and `ai_skip_reason`, with
+`continue_to_ai=true` only for successful `create` and `update` outcomes. On
+the true branch, **Execute AI Qualification** maps `lead` from **Continue After
+Idempotency?** and maps the CRM fields from **Execute HubSpot Contact Match**
+directly into the AI child's typed workflow inputs. The AI child then sends only
 `service_requested`, `enquiry_message`, `budget_band`, `timeline_band`, and
 `company_description` to OpenAI. See `docs/ai-request-response.md` for the
 response contract and deterministic score mapping.

@@ -100,7 +100,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return $input.all().map((item, index) => ({\n  json: {\n    idempotency: {\n      enabled: false,\n      key: null,\n      claim_action: 'bypassed',\n      should_continue: true,\n      outcome: 'continue',\n    },\n  },\n  pairedItem: { item: index },\n}));\n"
+        "jsCode": "const workflowInput = $('When Executed by Another Workflow').first().json;\n\nreturn $input.all().map((item, index) => ({\n  json: {\n    lead: workflowInput.lead,\n    idempotency: {\n      enabled: false,\n      key: null,\n      claim_action: 'bypassed',\n      should_continue: true,\n      outcome: 'continue',\n    },\n  },\n  pairedItem: { item: index },\n}));\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -264,7 +264,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const OUTCOMES = {\n  claimed: 'continue',\n  completed: 'return_previous_result',\n  processing: 'accepted_in_progress',\n  failed: 'authorized_safe_replay_required',\n};\n\nreturn $input.all().map((item, index) => {\n  const claim = item.json;\n  const claimAction = claim.claim_action;\n  const outcome = OUTCOMES[claimAction];\n\n  if (!outcome) {\n    throw new Error(`Unsupported idempotency claim action: ${claimAction}`);\n  }\n\n  return {\n    json: {\n      idempotency: {\n        enabled: true,\n        key: claim.idempotency_key,\n        claim_action: claimAction,\n        stored_correlation_id: claim.stored_correlation_id,\n        stored_status: claim.stored_status,\n        previous_result: claim.previous_result ?? null,\n        previous_error: claim.previous_error ?? null,\n        should_continue: claimAction === 'claimed',\n        outcome,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "const OUTCOMES = {\n  claimed: 'continue',\n  completed: 'return_previous_result',\n  processing: 'accepted_in_progress',\n  failed: 'authorized_safe_replay_required',\n};\n\nreturn $input.all().map((item, index) => {\n  const claim = item.json;\n  const claimAction = claim.claim_action;\n  const outcome = OUTCOMES[claimAction];\n  const shouldContinue = claimAction === 'claimed';\n\n  if (!outcome) {\n    throw new Error(`Unsupported idempotency claim action: ${claimAction}`);\n  }\n\n  const workflowInput = $('When Executed by Another Workflow').first().json;\n\n  return {\n    json: {\n      ...(shouldContinue ? { lead: workflowInput.lead } : {}),\n      idempotency: {\n        enabled: true,\n        key: claim.idempotency_key,\n        claim_action: claimAction,\n        stored_correlation_id: claim.stored_correlation_id,\n        stored_status: claim.stored_status,\n        previous_result: claim.previous_result ?? null,\n        previous_error: claim.previous_error ?? null,\n        should_continue: shouldContinue,\n        outcome,\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

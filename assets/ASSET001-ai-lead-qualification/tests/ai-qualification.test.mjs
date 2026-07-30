@@ -81,8 +81,14 @@ const expectedAiResponse = {
   response_draft: 'Thank you for describing your integration requirement.',
 };
 
-function execute(code, input) {
-  return code({ all: () => [{ json: input }] })[0].json;
+function execute(code, input, parentContext = qualificationContext()) {
+  return code(
+    { all: () => [{ json: input }] },
+    (nodeName) => {
+      assert.equal(nodeName, 'Continue After Idempotency?');
+      return { first: () => ({ json: parentContext }) };
+    },
+  )[0].json;
 }
 
 function executeScore(input, context = qualificationContext()) {
@@ -140,24 +146,18 @@ function aiValidationInput(_requestContract, response) {
   };
 }
 
-test('main flow gates AI after combining lead and HubSpot match results', () => {
-  const mergeNode = findNode(mainWorkflow, 'Merge Qualification Context');
+test('main flow gates AI without a redundant qualification-context merge', () => {
   const executeAiNode = findNode(mainWorkflow, 'Execute AI Qualification');
   const hubspotNode = findNode(mainWorkflow, 'Execute HubSpot Contact Match');
 
-  assert.deepEqual(mergeNode.parameters, {
-    mode: 'combine',
-    combineBy: 'combineByPosition',
-    options: {},
-  });
+  assert.equal(
+    mainWorkflow.nodes.some((node) => node.name === 'Merge Qualification Context'),
+    false,
+  );
   assert.equal(hubspotNode.onError, 'continueRegularOutput');
   assert.equal(
-    mainWorkflow.connections['Wait for Idempotency'].main[0][1].node,
-    'Merge Qualification Context',
-  );
-  assert.equal(
     mainWorkflow.connections['Execute HubSpot Contact Match'].main[0][0].node,
-    'Merge Qualification Context',
+    'Determine AI Invocation',
   );
   assert.equal(
     mainWorkflow.connections['Invoke AI?'].main[0][0].node,
@@ -175,6 +175,7 @@ test('successful create and update decisions invoke AI', () => {
     const result = execute(determineAiInvocation, qualificationContext({ crm_action: crmAction }));
     assert.equal(result.continue_to_ai, true);
     assert.equal(result.ai_skip_reason, null);
+    assert.deepEqual(Object.keys(result), ['continue_to_ai', 'ai_skip_reason']);
   }
 });
 
@@ -198,6 +199,37 @@ test('review and failed HubSpot searches do not invoke AI', () => {
   assert.equal(review.ai_skip_reason, 'multiple_email_matches');
   assert.equal(failed.continue_to_ai, false);
   assert.equal(failed.ai_skip_reason, 'hubspot_search_failed');
+});
+
+test('AI sub-workflow call maps prior context without a preparation node', () => {
+  const executeAiNode = findNode(mainWorkflow, 'Execute AI Qualification');
+  const triggerNode = findNode(aiWorkflow, 'When Executed by Another Workflow');
+
+  assert.equal(
+    mainWorkflow.nodes.some((node) => node.name === 'Prepare AI Qualification Input'),
+    false,
+  );
+  assert.deepEqual(Object.keys(executeAiNode.parameters.workflowInputs.value), [
+    'lead',
+    'hubspot_search_success',
+    'crm_action',
+    'crm_match',
+  ]);
+  assert.match(
+    executeAiNode.parameters.workflowInputs.value.lead,
+    /Continue After Idempotency\?/,
+  );
+  assert.match(
+    executeAiNode.parameters.workflowInputs.value.crm_match,
+    /Execute HubSpot Contact Match/,
+  );
+  assert.equal(triggerNode.parameters.inputSource, 'workflowInputs');
+  assert.deepEqual(triggerNode.parameters.workflowInputs.values, [
+    { name: 'lead', type: 'object' },
+    { name: 'hubspot_search_success', type: 'boolean' },
+    { name: 'crm_action', type: 'string' },
+    { name: 'crm_match', type: 'object' },
+  ]);
 });
 
 test('AI request contains only the five permitted business fields', () => {

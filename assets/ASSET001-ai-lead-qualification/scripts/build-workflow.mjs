@@ -200,7 +200,7 @@ function noOpNode({ id, name, position }) {
   };
 }
 
-function executeWorkflowNode({ id, name, position, workflowId }) {
+function executeWorkflowNode({ id, name, position, workflowId, workflowInputs }) {
   return {
     parameters: {
       source: 'database',
@@ -209,7 +209,7 @@ function executeWorkflowNode({ id, name, position, workflowId }) {
         value: workflowId,
         mode: 'id',
       },
-      workflowInputs: {
+      workflowInputs: workflowInputs ?? {
         mappingMode: 'defineBelow',
         value: {},
         matchingColumns: [],
@@ -318,6 +318,7 @@ const managedNodeIds = new Set([
   'asset001-merge-qualification-context',
   'asset001-determine-ai-invocation',
   'asset001-should-invoke-ai',
+  'asset001-prepare-ai-qualification-input',
   'asset001-execute-ai-qualification-subflow',
   'asset001-route-without-ai',
 ]);
@@ -342,20 +343,6 @@ workflow.nodes.push(
     position: [1040, 300],
     leftValue: '={{ $json.validation.is_valid }}',
   }),
-  {
-    parameters: {
-      mode: 'chooseBranch',
-      numberInputs: 2,
-      chooseBranchMode: 'waitForAll',
-      output: 'specifiedInput',
-      useDataOfInput: 1,
-    },
-    type: 'n8n-nodes-base.merge',
-    typeVersion: 3.2,
-    position: [1300, 220],
-    id: 'asset001-use-normalized-input',
-    name: 'Use Normalized Input',
-  },
   {
     parameters: {
       source: 'database',
@@ -390,20 +377,6 @@ workflow.nodes.push(
     leftValue: '={{ $json.idempotency.should_continue }}',
   }),
   {
-    parameters: {
-      mode: 'chooseBranch',
-      numberInputs: 2,
-      chooseBranchMode: 'waitForAll',
-      output: 'specifiedInput',
-      useDataOfInput: 1,
-    },
-    type: 'n8n-nodes-base.merge',
-    typeVersion: 3.2,
-    position: [2080, 140],
-    id: 'asset001-wait-for-idempotency',
-    name: 'Wait for Idempotency',
-  },
-  {
     ...executeWorkflowNode({
       id: 'asset001-execute-hubspot-match-subflow',
       name: 'Execute HubSpot Contact Match',
@@ -412,11 +385,6 @@ workflow.nodes.push(
     }),
     onError: 'continueRegularOutput',
   },
-  mergeByPositionNode({
-    id: 'asset001-merge-qualification-context',
-    name: 'Merge Qualification Context',
-    position: [2600, 140],
-  }),
   codeNode({
     id: 'asset001-determine-ai-invocation',
     name: 'Determine AI Invocation',
@@ -434,6 +402,57 @@ workflow.nodes.push(
     name: 'Execute AI Qualification',
     position: [3380, 60],
     workflowId: 'ASSET001AIQualification01',
+    workflowInputs: {
+      mappingMode: 'defineBelow',
+      value: {
+        lead: "={{ $('Continue After Idempotency?').first().json.lead }}",
+        hubspot_search_success:
+          "={{ $('Execute HubSpot Contact Match').first().json.hubspot_search_success }}",
+        crm_action: "={{ $('Execute HubSpot Contact Match').first().json.crm_action }}",
+        crm_match: "={{ $('Execute HubSpot Contact Match').first().json.crm_match }}",
+      },
+      matchingColumns: [],
+      schema: [
+        {
+          id: 'lead',
+          displayName: 'lead',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'object',
+        },
+        {
+          id: 'hubspot_search_success',
+          displayName: 'hubspot_search_success',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'boolean',
+        },
+        {
+          id: 'crm_action',
+          displayName: 'crm_action',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+        {
+          id: 'crm_match',
+          displayName: 'crm_match',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'object',
+        },
+      ],
+      attemptToConvertTypes: false,
+      convertFieldsToString: false,
+    },
   }),
   noOpNode({
     id: 'asset001-valid-placeholder',
@@ -462,45 +481,27 @@ workflow.connections = {
     main: [[{ node: 'Normalize Lead', type: 'main', index: 0 }]],
   },
   'Normalize Lead': {
-    main: [[
-      { node: 'Validate Lead', type: 'main', index: 0 },
-      { node: 'Use Normalized Input', type: 'main', index: 0 },
-    ]],
+    main: [[{ node: 'Validate Lead', type: 'main', index: 0 }]],
   },
   'Validate Lead': {
     main: [[{ node: 'Is Lead Valid?', type: 'main', index: 0 }]],
   },
   'Is Lead Valid?': {
     main: [
-      [{ node: 'Use Normalized Input', type: 'main', index: 1 }],
+      [{ node: 'Execute Idempotency Guard', type: 'main', index: 0 }],
       [{ node: 'Record Validation Failure', type: 'main', index: 0 }],
     ],
-  },
-  'Use Normalized Input': {
-    main: [[
-      { node: 'Execute Idempotency Guard', type: 'main', index: 0 },
-      { node: 'Wait for Idempotency', type: 'main', index: 0 },
-    ]],
   },
   'Execute Idempotency Guard': {
     main: [[{ node: 'Continue After Idempotency?', type: 'main', index: 0 }]],
   },
   'Continue After Idempotency?': {
     main: [
-      [{ node: 'Wait for Idempotency', type: 'main', index: 1 }],
+      [{ node: 'Execute HubSpot Contact Match', type: 'main', index: 0 }],
       [{ node: 'Duplicate Submission Handled', type: 'main', index: 0 }],
     ],
   },
-  'Wait for Idempotency': {
-    main: [[
-      { node: 'Execute HubSpot Contact Match', type: 'main', index: 0 },
-      { node: 'Merge Qualification Context', type: 'main', index: 0 },
-    ]],
-  },
   'Execute HubSpot Contact Match': {
-    main: [[{ node: 'Merge Qualification Context', type: 'main', index: 1 }]],
-  },
-  'Merge Qualification Context': {
     main: [[{ node: 'Determine AI Invocation', type: 'main', index: 0 }]],
   },
   'Determine AI Invocation': {
@@ -726,7 +727,15 @@ const aiQualificationWorkflow = {
   nodes: [
     {
       parameters: {
-        inputSource: 'passthrough',
+        inputSource: 'workflowInputs',
+        workflowInputs: {
+          values: [
+            { name: 'lead', type: 'object' },
+            { name: 'hubspot_search_success', type: 'boolean' },
+            { name: 'crm_action', type: 'string' },
+            { name: 'crm_match', type: 'object' },
+          ],
+        },
       },
       type: 'n8n-nodes-base.executeWorkflowTrigger',
       typeVersion: 1.2,
