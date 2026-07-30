@@ -1,0 +1,694 @@
+[
+  {
+    "updatedAt": "2026-07-30T10:24:06.935Z",
+    "createdAt": "2026-07-26T12:56:18.475Z",
+    "id": "ASSET001Form01",
+    "name": "ASSET001 - Website Lead Form",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "authentication": "none",
+          "formTitle": "Tell us about your project",
+          "formDescription": "<p>Share a few details about your business requirement. This demonstration uses synthetic data only—please do not submit real personal or confidential information.</p>",
+          "formFields": {
+            "values": [
+              {
+                "fieldName": "first_name",
+                "fieldLabel": "First name",
+                "fieldType": "text",
+                "placeholder": "Jane",
+                "requiredField": true
+              },
+              {
+                "fieldName": "last_name",
+                "fieldLabel": "Last name",
+                "fieldType": "text",
+                "placeholder": "Smith",
+                "requiredField": true
+              },
+              {
+                "fieldName": "email",
+                "fieldLabel": "Work email",
+                "fieldType": "email",
+                "placeholder": "jane@example.test",
+                "requiredField": true
+              },
+              {
+                "fieldName": "phone",
+                "fieldLabel": "Phone number",
+                "fieldType": "text",
+                "placeholder": "+1 555 010 2000",
+                "requiredField": false
+              },
+              {
+                "fieldName": "company",
+                "fieldLabel": "Company",
+                "fieldType": "text",
+                "placeholder": "Northwind Services",
+                "requiredField": false
+              },
+              {
+                "fieldName": "company_website",
+                "fieldLabel": "Company website",
+                "fieldType": "text",
+                "placeholder": "https://example.test",
+                "requiredField": false
+              },
+              {
+                "fieldName": "service_requested",
+                "fieldLabel": "Service requested",
+                "fieldType": "dropdown",
+                "fieldOptions": {
+                  "values": [
+                    {
+                      "option": "API integration"
+                    },
+                    {
+                      "option": "CRM automation"
+                    },
+                    {
+                      "option": "AI workflow"
+                    },
+                    {
+                      "option": "Data integration"
+                    },
+                    {
+                      "option": "Other"
+                    }
+                  ]
+                },
+                "requiredField": false
+              },
+              {
+                "fieldName": "message",
+                "fieldLabel": "Tell us about your requirement",
+                "fieldType": "textarea",
+                "placeholder": "Describe the business problem you want to solve.",
+                "requiredField": true
+              },
+              {
+                "fieldName": "budget",
+                "fieldLabel": "Estimated budget",
+                "fieldType": "dropdown",
+                "fieldOptions": {
+                  "values": [
+                    {
+                      "option": "Under $2,500"
+                    },
+                    {
+                      "option": "$2,500–$5,000"
+                    },
+                    {
+                      "option": "$5,000–$10,000"
+                    },
+                    {
+                      "option": "Over $10,000"
+                    },
+                    {
+                      "option": "Not decided"
+                    }
+                  ]
+                },
+                "requiredField": false
+              },
+              {
+                "fieldName": "timeline",
+                "fieldLabel": "Expected timeline",
+                "fieldType": "dropdown",
+                "fieldOptions": {
+                  "values": [
+                    {
+                      "option": "Immediately"
+                    },
+                    {
+                      "option": "Within one month"
+                    },
+                    {
+                      "option": "1–3 months"
+                    },
+                    {
+                      "option": "Later"
+                    },
+                    {
+                      "option": "Not decided"
+                    }
+                  ]
+                },
+                "requiredField": false
+              },
+              {
+                "fieldName": "country",
+                "fieldLabel": "Country",
+                "fieldType": "text",
+                "placeholder": "United States",
+                "requiredField": false
+              },
+              {
+                "fieldName": "company_description",
+                "fieldLabel": "Company description",
+                "fieldType": "textarea",
+                "placeholder": "Briefly describe the company and its business.",
+                "requiredField": false
+              },
+              {
+                "fieldName": "consent",
+                "fieldLabel": "Consent",
+                "fieldType": "checkbox",
+                "fieldOptions": {
+                  "values": [
+                    {
+                      "option": "I consent to the processing of this demonstration enquiry"
+                    }
+                  ]
+                },
+                "limitSelection": "exact",
+                "numberOfSelections": 1,
+                "requiredField": true
+              }
+            ]
+          },
+          "responseMode": "onReceived",
+          "options": {
+            "appendAttribution": false,
+            "buttonLabel": "Submit enquiry",
+            "path": "asset001-lead-qualification",
+            "respondWithOptions": {
+              "values": {
+                "respondWith": "text",
+                "formSubmittedText": "Thank you. Your demonstration enquiry has been received."
+              }
+            },
+            "ignoreBots": true,
+            "useWorkflowTimezone": true
+          }
+        },
+        "type": "n8n-nodes-base.formTrigger",
+        "typeVersion": 2.5,
+        "position": [
+          260,
+          300
+        ],
+        "id": "22efee2a-1804-4f1d-a5d5-cb6906496d58",
+        "name": "Website Lead Form",
+        "webhookId": "a8dc3b93-31b8-484c-aea0-25c657443e87"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const CONSENT_TEXT = 'I consent to the processing of this demonstration enquiry';\n\nconst SERVICE_MAP = {\n  'API integration': 'api_integration',\n  'CRM automation': 'crm_automation',\n  'AI workflow': 'ai_workflow',\n  'Data integration': 'data_integration',\n  Other: 'other',\n};\n\nconst BUDGET_MAP = {\n  'Under $2,500': 'under_2500',\n  '$2,500–$5,000': '2500_5000',\n  '$5,000–$10,000': '5000_10000',\n  'Over $10,000': 'over_10000',\n  'Not decided': 'not_decided',\n};\n\nconst TIMELINE_MAP = {\n  Immediately: 'immediately',\n  'Within one month': 'within_one_month',\n  '1–3 months': 'one_to_three_months',\n  Later: 'later',\n  'Not decided': 'not_decided',\n};\n\nfunction isBlank(value) {\n  return value === undefined || value === null ||\n    (typeof value === 'string' && value.trim() === '');\n}\n\nfunction normalizeText(value) {\n  return String(value).trim().replace(/\\s+/g, ' ');\n}\n\nfunction optionalText(value) {\n  return isBlank(value) ? null : normalizeText(value);\n}\n\nfunction normalizeMapped(value, mapping) {\n  if (isBlank(value)) return null;\n  const normalized = normalizeText(value);\n  return Object.prototype.hasOwnProperty.call(mapping, normalized)\n    ? mapping[normalized]\n    : normalized;\n}\n\nfunction normalizePhone(value) {\n  if (isBlank(value)) return null;\n  return String(value).trim().replace(/[\\s().-]/g, '');\n}\n\nfunction normalizeUrl(value) {\n  if (isBlank(value)) return null;\n  const normalized = String(value).trim();\n  const withoutFragment = normalized.split('#', 1)[0];\n  const match = withoutFragment.match(/^(https?):\\/\\/([^/?#]+)(.*)$/i);\n  if (!match) return normalized;\n\n  const [, protocol, authority, remainder] = match;\n  return `${protocol.toLowerCase()}://${authority.toLowerCase()}${remainder || '/'}`;\n}\n\nfunction normalizeMessage(value) {\n  if (isBlank(value)) return undefined;\n  return String(value)\n    .replace(/\\r\\n?/g, '\\n')\n    .replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]/g, '')\n    .trim();\n}\n\nfunction normalizeConsent(value) {\n  if (value === undefined || value === null) return undefined;\n  if (Array.isArray(value)) {\n    return value.length === 1 && value[0] === CONSENT_TEXT;\n  }\n  return value === CONSENT_TEXT || value === true;\n}\n\nfunction normalizeLead(raw) {\n  const lead = {\n    phone_normalized: normalizePhone(raw.phone),\n    company: optionalText(raw.company),\n    company_description: optionalText(raw.company_description),\n    company_website: normalizeUrl(raw.company_website),\n    service_requested: normalizeMapped(raw.service_requested, SERVICE_MAP),\n    budget_band: normalizeMapped(raw.budget, BUDGET_MAP),\n    timeline_band: normalizeMapped(raw.timeline, TIMELINE_MAP),\n    country: optionalText(raw.country),\n  };\n\n  if (!isBlank(raw.first_name)) lead.first_name = normalizeText(raw.first_name);\n  if (!isBlank(raw.last_name)) lead.last_name = normalizeText(raw.last_name);\n  if (!isBlank(raw.email)) lead.email_normalized = String(raw.email).trim().toLowerCase();\n\n  const message = normalizeMessage(raw.message);\n  if (message !== undefined) lead.message_sanitized = message;\n\n  const consent = normalizeConsent(raw.consent);\n  if (consent !== undefined) lead.consent = consent;\n\n  return lead;\n}\n\nreturn $input.all().map((item, index) => ({\n  json: { lead: normalizeLead(item.json) },\n  pairedItem: { item: index },\n}));\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          520,
+          300
+        ],
+        "id": "asset001-normalize",
+        "name": "Normalize Lead"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const FIELD_LABELS = {\n  first_name: 'First name',\n  last_name: 'Last name',\n  email_normalized: 'Email',\n  phone_normalized: 'Phone',\n  company: 'Company',\n  company_description: 'Company description',\n  company_website: 'Company website',\n  service_requested: 'Service requested',\n  message_sanitized: 'Message',\n  budget_band: 'Budget',\n  timeline_band: 'Timeline',\n  country: 'Country',\n  consent: 'Consent',\n};\n\nconst ALLOWED_FIELDS = new Set(Object.keys(FIELD_LABELS));\nconst REQUIRED_FIELDS = [\n  'first_name',\n  'last_name',\n  'email_normalized',\n  'message_sanitized',\n  'consent',\n];\nconst SERVICE_VALUES = new Set([\n  'api_integration',\n  'crm_automation',\n  'ai_workflow',\n  'data_integration',\n  'other',\n  null,\n]);\nconst BUDGET_VALUES = new Set([\n  'under_2500',\n  '2500_5000',\n  '5000_10000',\n  'over_10000',\n  'not_decided',\n  null,\n]);\nconst TIMELINE_VALUES = new Set([\n  'immediately',\n  'within_one_month',\n  'one_to_three_months',\n  'later',\n  'not_decided',\n  null,\n]);\n\nfunction messageFor(field, code) {\n  const label = FIELD_LABELS[field] || 'Submission';\n  return {\n    required: `${label} is required`,\n    invalid_type: `${label} has an invalid type`,\n    invalid_format: `${label} has an invalid format`,\n    invalid_enum: `${label} is not an allowed option`,\n    consent_required: 'Consent is required',\n    invalid_value: `${label} has an invalid value`,\n    min_length: `${label} is too short`,\n    max_length: `${label} is too long`,\n    unexpected_field: 'Submission contains an unexpected field',\n  }[code];\n}\n\nfunction validationError(field, keyword, code, details = {}, schemaPath) {\n  return {\n    field,\n    path: field === null ? '' : `/${String(field).replace(/~/g, '~0').replace(/\\//g, '~1')}`,\n    code,\n    message: messageFor(field, code),\n    keyword,\n    details,\n    schema_path: schemaPath,\n  };\n}\n\nfunction stringLength(value) {\n  return [...value].length;\n}\n\nfunction isHttpUrl(value) {\n  if (/\\s/.test(value)) return false;\n  const match = value.match(/^https?:\\/\\/([^/?#]+)(?:[/?#].*)?$/i);\n  if (!match) return false;\n\n  const authority = match[1];\n  if (authority.includes('@') || authority.startsWith('[')) return false;\n\n  const separator = authority.lastIndexOf(':');\n  const hasPort = separator > -1;\n  const hostname = hasPort ? authority.slice(0, separator) : authority;\n  const port = hasPort ? authority.slice(separator + 1) : null;\n\n  if (\n    port !== null &&\n    (!/^\\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)\n  ) {\n    return false;\n  }\n\n  if (hostname === 'localhost') return true;\n  const labels = hostname.split('.');\n  return labels.length >= 2 && labels.every(\n    (label) =>\n      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),\n  );\n}\n\nfunction validateString(errors, lead, field, { minLength, maxLength }) {\n  const value = lead[field];\n  if (value === undefined) return;\n  if (typeof value !== 'string') {\n    errors.push(validationError(\n      field,\n      'type',\n      'invalid_type',\n      { type: 'string' },\n      `#/properties/${field}/type`,\n    ));\n    return;\n  }\n  if (minLength !== undefined && stringLength(value) < minLength) {\n    errors.push(validationError(\n      field,\n      'minLength',\n      'min_length',\n      { limit: minLength },\n      `#/properties/${field}/minLength`,\n    ));\n  }\n  if (maxLength !== undefined && stringLength(value) > maxLength) {\n    errors.push(validationError(\n      field,\n      'maxLength',\n      'max_length',\n      { limit: maxLength },\n      `#/properties/${field}/maxLength`,\n    ));\n  }\n}\n\nfunction validateNullableString(errors, lead, field, maxLength) {\n  const value = lead[field];\n  if (value === undefined || value === null) return;\n  if (typeof value !== 'string') {\n    errors.push(validationError(\n      field,\n      'type',\n      'invalid_type',\n      { type: ['string', 'null'] },\n      `#/properties/${field}/type`,\n    ));\n    return;\n  }\n  if (stringLength(value) > maxLength) {\n    errors.push(validationError(\n      field,\n      'maxLength',\n      'max_length',\n      { limit: maxLength },\n      `#/properties/${field}/maxLength`,\n    ));\n  }\n}\n\nfunction validateEnum(errors, lead, field, allowedValues) {\n  const value = lead[field];\n  if (value === undefined) return;\n  if (!allowedValues.has(value)) {\n    errors.push(validationError(\n      field,\n      'enum',\n      'invalid_enum',\n      { allowedValues: [...allowedValues] },\n      `#/properties/${field}/enum`,\n    ));\n  }\n}\n\nfunction validateLead(lead) {\n  const errors = [];\n\n  if (!lead || typeof lead !== 'object' || Array.isArray(lead)) {\n    return [validationError(\n      null,\n      'type',\n      'invalid_type',\n      { type: 'object' },\n      '#/type',\n    )];\n  }\n\n  for (const field of Object.keys(lead)) {\n    if (!ALLOWED_FIELDS.has(field)) {\n      errors.push(validationError(\n        field,\n        'additionalProperties',\n        'unexpected_field',\n        {},\n        '#/additionalProperties',\n      ));\n    }\n  }\n\n  for (const field of REQUIRED_FIELDS) {\n    if (!Object.prototype.hasOwnProperty.call(lead, field)) {\n      errors.push(validationError(\n        field,\n        'required',\n        field === 'consent' ? 'consent_required' : 'required',\n        {},\n        '#/required',\n      ));\n    }\n  }\n\n  validateString(errors, lead, 'first_name', { minLength: 1, maxLength: 120 });\n  validateString(errors, lead, 'last_name', { minLength: 1, maxLength: 120 });\n  validateString(errors, lead, 'email_normalized', { maxLength: 254 });\n  validateString(errors, lead, 'message_sanitized', { minLength: 1, maxLength: 5000 });\n  validateNullableString(errors, lead, 'company', 160);\n  validateNullableString(errors, lead, 'company_description', 500);\n  validateNullableString(errors, lead, 'country', 100);\n\n  const email = lead.email_normalized;\n  if (\n    typeof email === 'string' &&\n    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)\n  ) {\n    errors.push(validationError(\n      'email_normalized',\n      'format',\n      'invalid_format',\n      { format: 'email' },\n      '#/properties/email_normalized/format',\n    ));\n  }\n\n  const phone = lead.phone_normalized;\n  if (phone !== undefined && phone !== null) {\n    if (typeof phone !== 'string') {\n      errors.push(validationError(\n        'phone_normalized',\n        'type',\n        'invalid_type',\n        { type: ['string', 'null'] },\n        '#/properties/phone_normalized/type',\n      ));\n    } else if (!/^\\+[1-9]\\d{6,14}$/.test(phone)) {\n      errors.push(validationError(\n        'phone_normalized',\n        'pattern',\n        'invalid_format',\n        {},\n        '#/properties/phone_normalized/pattern',\n      ));\n    }\n  }\n\n  const website = lead.company_website;\n  if (website !== undefined && website !== null) {\n    if (typeof website !== 'string') {\n      errors.push(validationError(\n        'company_website',\n        'type',\n        'invalid_type',\n        { type: ['string', 'null'] },\n        '#/properties/company_website/type',\n      ));\n    } else {\n      if (stringLength(website) > 2048) {\n        errors.push(validationError(\n          'company_website',\n          'maxLength',\n          'max_length',\n          { limit: 2048 },\n          '#/properties/company_website/maxLength',\n        ));\n      }\n      if (!isHttpUrl(website)) {\n        errors.push(validationError(\n          'company_website',\n          'format',\n          'invalid_format',\n          { format: 'uri' },\n          '#/properties/company_website/format',\n        ));\n      }\n    }\n  }\n\n  validateEnum(errors, lead, 'service_requested', SERVICE_VALUES);\n  validateEnum(errors, lead, 'budget_band', BUDGET_VALUES);\n  validateEnum(errors, lead, 'timeline_band', TIMELINE_VALUES);\n\n  if (Object.prototype.hasOwnProperty.call(lead, 'consent') && lead.consent !== true) {\n    errors.push(validationError(\n      'consent',\n      'const',\n      'consent_required',\n      {},\n      '#/properties/consent/const',\n    ));\n  }\n\n  return errors;\n}\n\nreturn $input.all().map((item, index) => {\n  const errors = validateLead(item.json.lead);\n\n  return {\n    json: {\n      ...(errors.length === 0 ? item.json : {}),\n      validation: {\n        is_valid: errors.length === 0,\n        errors,\n        warnings: [],\n      },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          780,
+          300
+        ],
+        "id": "asset001-validate",
+        "name": "Validate Lead"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "asset001-is-valid-condition",
+                "leftValue": "={{ $json.validation.is_valid }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1040,
+          300
+        ],
+        "id": "asset001-is-valid",
+        "name": "Is Lead Valid?"
+      },
+      {
+        "parameters": {
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "value": "ASSET001Idempotency01",
+            "mode": "id"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {},
+            "matchingColumns": [],
+            "schema": [],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          },
+          "mode": "once",
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.3,
+        "position": [
+          1560,
+          220
+        ],
+        "id": "asset001-execute-idempotency-subflow",
+        "name": "Execute Idempotency Guard"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "asset001-should-continue-condition",
+                "leftValue": "={{ $json.idempotency.should_continue }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          1820,
+          220
+        ],
+        "id": "asset001-should-continue",
+        "name": "Continue After Idempotency?"
+      },
+      {
+        "parameters": {
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "value": "ASSET001HubSpotMatch01",
+            "mode": "id"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {},
+            "matchingColumns": [],
+            "schema": [],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": true
+          },
+          "mode": "once",
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.3,
+        "position": [
+          2340,
+          140
+        ],
+        "id": "asset001-execute-hubspot-match-subflow",
+        "name": "Execute HubSpot Contact Match",
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "return $input.all().map((item, index) => {\n  const crmMatch = item.json.crm_match ?? null;\n  const hubspotSearchSuccess = item.json.hubspot_search_success === true;\n  const crmAction = item.json.crm_action ?? crmMatch?.decision ?? null;\n  const continueToAi =\n    hubspotSearchSuccess === true &&\n    ['create', 'update'].includes(crmAction);\n\n  let skipReason = null;\n  if (!continueToAi) {\n    if (!hubspotSearchSuccess) {\n      skipReason = 'hubspot_search_failed';\n    } else if (crmAction === 'review') {\n      skipReason = crmMatch?.review_reason ?? 'ambiguous_crm_match';\n    } else {\n      skipReason = 'unsupported_crm_action';\n    }\n  }\n\n  return {\n    json: {\n      continue_to_ai: continueToAi,\n      ai_skip_reason: skipReason,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2860,
+          140
+        ],
+        "id": "asset001-determine-ai-invocation",
+        "name": "Determine AI Invocation"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "strict",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "asset001-should-invoke-ai-condition",
+                "leftValue": "={{ $json.continue_to_ai }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.2,
+        "position": [
+          3120,
+          140
+        ],
+        "id": "asset001-should-invoke-ai",
+        "name": "Invoke AI?"
+      },
+      {
+        "parameters": {
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "value": "ASSET001AIQualification01",
+            "mode": "id"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "lead": "={{ $('Continue After Idempotency?').first().json.lead }}",
+              "hubspot_search_success": "={{ $('Execute HubSpot Contact Match').first().json.hubspot_search_success }}",
+              "crm_action": "={{ $('Execute HubSpot Contact Match').first().json.crm_action }}",
+              "crm_match": "={{ $('Execute HubSpot Contact Match').first().json.crm_match }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "lead",
+                "displayName": "lead",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "object"
+              },
+              {
+                "id": "hubspot_search_success",
+                "displayName": "hubspot_search_success",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "boolean"
+              },
+              {
+                "id": "crm_action",
+                "displayName": "crm_action",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "string"
+              },
+              {
+                "id": "crm_match",
+                "displayName": "crm_match",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "object"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "mode": "once",
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.3,
+        "position": [
+          3380,
+          60
+        ],
+        "id": "asset001-execute-ai-qualification-subflow",
+        "name": "Execute AI Qualification"
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          3640,
+          60
+        ],
+        "id": "asset001-valid-placeholder",
+        "name": "Continue Qualification"
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          3380,
+          220
+        ],
+        "id": "asset001-route-without-ai",
+        "name": "Route Without AI"
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          2080,
+          300
+        ],
+        "id": "asset001-duplicate-handled",
+        "name": "Duplicate Submission Handled"
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          1300,
+          380
+        ],
+        "id": "asset001-invalid-placeholder",
+        "name": "Record Validation Failure"
+      }
+    ],
+    "connections": {
+      "Website Lead Form": {
+        "main": [
+          [
+            {
+              "node": "Normalize Lead",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Lead": {
+        "main": [
+          [
+            {
+              "node": "Validate Lead",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Validate Lead": {
+        "main": [
+          [
+            {
+              "node": "Is Lead Valid?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is Lead Valid?": {
+        "main": [
+          [
+            {
+              "node": "Execute Idempotency Guard",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Record Validation Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Idempotency Guard": {
+        "main": [
+          [
+            {
+              "node": "Continue After Idempotency?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Continue After Idempotency?": {
+        "main": [
+          [
+            {
+              "node": "Execute HubSpot Contact Match",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Duplicate Submission Handled",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute HubSpot Contact Match": {
+        "main": [
+          [
+            {
+              "node": "Determine AI Invocation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Determine AI Invocation": {
+        "main": [
+          [
+            {
+              "node": "Invoke AI?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Invoke AI?": {
+        "main": [
+          [
+            {
+              "node": "Execute AI Qualification",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Route Without AI",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute AI Qualification": {
+        "main": [
+          [
+            {
+              "node": "Continue Qualification",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "timezone": "Europe/Kiev"
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "6be2445e-ab7e-434c-8366-44b5c57dc6eb",
+    "activeVersionId": "6be2445e-ab7e-434c-8366-44b5c57dc6eb",
+    "versionCounter": 36,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-07-26T12:56:18.475Z",
+        "createdAt": "2026-07-26T12:56:18.475Z",
+        "role": "workflow:owner",
+        "workflowId": "ASSET001Form01",
+        "projectId": "4rZFyLIS08DeykZq",
+        "project": {
+          "updatedAt": "2026-07-26T12:26:49.590Z",
+          "createdAt": "2026-07-26T12:24:36.374Z",
+          "id": "4rZFyLIS08DeykZq",
+          "name": "Sam Rajarathinam <sam.rajarathinam@celes7a.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "e0ee685d-6492-4345-abf6-5a8b5c2bbb1b"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": null,
+      "description": null
+    }
+  }
+]

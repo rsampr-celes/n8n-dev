@@ -299,3 +299,15 @@ directly into the AI child's typed workflow inputs. The AI child then sends only
 `service_requested`, `enquiry_message`, `budget_band`, `timeline_band`, and
 `company_description` to OpenAI. See `docs/ai-request-response.md` for the
 response contract and deterministic score mapping.
+
+After AI qualification, **Execute HubSpot Contact Deal** maps the normalized
+lead, contact-match decision, complete AI child result, correlation ID,
+submission reference, write timestamp, source, pipeline ID, and initial stage
+directly into typed child inputs. The child creates minimal contact and deal
+request objects and does not receive an accumulated parent payload.
+
+The CRM child searches deals by `workflow_correlation_id` before any write. It
+then creates or updates the contact, creates or updates the single matched deal,
+and applies the default contact/deal association. Its success response contains
+only the correlation ID plus contact and deal actions and IDs. See
+`docs/hubspot-crm-request-response.md`.

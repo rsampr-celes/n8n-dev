@@ -18,6 +18,10 @@ const aiQualificationWorkflowPath = path.join(
   workflowsDirectory,
   'ASSET001-ai-qualification.json',
 );
+const hubspotCrmWorkflowPath = path.join(
+  workflowsDirectory,
+  'ASSET001-hubspot-contact-deal.json',
+);
 const sourceDirectory = path.join(assetDirectory, 'src');
 const normalizationSourcePath = path.join(sourceDirectory, 'normalize-lead.js');
 const validationSourcePath = path.join(sourceDirectory, 'validate-lead.js');
@@ -98,6 +102,30 @@ const deterministicScoreSource = fs.readFileSync(
 );
 const prepareAiReviewOutcomeSource = fs.readFileSync(
   path.join(sourceDirectory, 'prepare-ai-review-outcome.js'),
+  'utf8',
+);
+const buildHubspotCrmRequestSource = fs.readFileSync(
+  path.join(sourceDirectory, 'build-hubspot-crm-request.js'),
+  'utf8',
+);
+const evaluateDealSearchResultsSource = fs.readFileSync(
+  path.join(sourceDirectory, 'evaluate-deal-search-results.js'),
+  'utf8',
+);
+const attachHubspotContactResponseSource = fs.readFileSync(
+  path.join(sourceDirectory, 'attach-hubspot-contact-response.js'),
+  'utf8',
+);
+const attachHubspotDealResponseSource = fs.readFileSync(
+  path.join(sourceDirectory, 'attach-hubspot-deal-response.js'),
+  'utf8',
+);
+const prepareHubspotCrmResponseSource = fs.readFileSync(
+  path.join(sourceDirectory, 'prepare-hubspot-crm-response.js'),
+  'utf8',
+);
+const prepareHubspotDealReviewSource = fs.readFileSync(
+  path.join(sourceDirectory, 'prepare-hubspot-deal-review.js'),
   'utf8',
 );
 function booleanIfNode({ id, name, position, leftValue }) {
@@ -286,6 +314,59 @@ function openAiRequestNode({ id, name, position }) {
   };
 }
 
+function hubspotHttpRequestNode({
+  id,
+  name,
+  position,
+  method,
+  url,
+  body,
+}) {
+  const parameters = {
+    method,
+    url,
+    authentication: 'predefinedCredentialType',
+    nodeCredentialType: 'hubspotAppToken',
+    sendHeaders: true,
+    headerParameters: {
+      parameters: [
+        {
+          name: 'Content-Type',
+          value: 'application/json',
+        },
+      ],
+    },
+    options: {
+      timeout: 60000,
+    },
+  };
+
+  if (body !== undefined) {
+    parameters.sendBody = true;
+    parameters.contentType = 'raw';
+    parameters.rawContentType = 'application/json';
+    parameters.body = body;
+  }
+
+  return {
+    parameters,
+    type: 'n8n-nodes-base.httpRequest',
+    typeVersion: 4.3,
+    position,
+    id,
+    name,
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 30000,
+    credentials: {
+      hubspotAppToken: {
+        id: 'gNSXBziHeO44pSta',
+        name: 'HubspotConnectionSK',
+      },
+    },
+  };
+}
+
 const managedNodeIds = new Set([
   'asset001-normalize-validate',
   'asset001-normalize',
@@ -320,6 +401,7 @@ const managedNodeIds = new Set([
   'asset001-should-invoke-ai',
   'asset001-prepare-ai-qualification-input',
   'asset001-execute-ai-qualification-subflow',
+  'asset001-execute-hubspot-crm-subflow',
   'asset001-route-without-ai',
 ]);
 
@@ -454,10 +536,130 @@ workflow.nodes.push(
       convertFieldsToString: false,
     },
   }),
+  executeWorkflowNode({
+    id: 'asset001-execute-hubspot-crm-subflow',
+    name: 'Execute HubSpot Contact Deal',
+    position: [3640, 60],
+    workflowId: 'ASSET001HubSpotContactDeal01',
+    workflowInputs: {
+      mappingMode: 'defineBelow',
+      value: {
+        lead: "={{ $('Continue After Idempotency?').first().json.lead }}",
+        crm_action:
+          "={{ $('Execute HubSpot Contact Match').first().json.crm_action }}",
+        crm_match:
+          "={{ $('Execute HubSpot Contact Match').first().json.crm_match }}",
+        ai_result: "={{ $('Execute AI Qualification').first().json }}",
+        correlation_id:
+          "={{ $('Execute Idempotency Guard').first().json.idempotency.stored_correlation_id }}",
+        submission_reference:
+          "={{ $('Execute Idempotency Guard').first().json.idempotency.key ?? $('Execute Idempotency Guard').first().json.idempotency.stored_correlation_id }}",
+        received_at: '={{ $now.toISO() }}',
+        source: 'portfolio_demo',
+        hubspot_pipeline_id: 'default',
+        hubspot_dealstage_id: 'appointmentscheduled',
+      },
+      matchingColumns: [],
+      schema: [
+        {
+          id: 'lead',
+          displayName: 'lead',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'object',
+        },
+        {
+          id: 'crm_action',
+          displayName: 'crm_action',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+        {
+          id: 'crm_match',
+          displayName: 'crm_match',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'object',
+        },
+        {
+          id: 'ai_result',
+          displayName: 'ai_result',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'object',
+        },
+        {
+          id: 'correlation_id',
+          displayName: 'correlation_id',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+        {
+          id: 'submission_reference',
+          displayName: 'submission_reference',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+        {
+          id: 'received_at',
+          displayName: 'received_at',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+        {
+          id: 'source',
+          displayName: 'source',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+        {
+          id: 'hubspot_pipeline_id',
+          displayName: 'hubspot_pipeline_id',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+        {
+          id: 'hubspot_dealstage_id',
+          displayName: 'hubspot_dealstage_id',
+          required: true,
+          defaultMatch: false,
+          display: true,
+          canBeUsedToMatch: true,
+          type: 'string',
+        },
+      ],
+      attemptToConvertTypes: false,
+      convertFieldsToString: false,
+    },
+  }),
   noOpNode({
     id: 'asset001-valid-placeholder',
     name: 'Continue Qualification',
-    position: [3640, 60],
+    position: [3900, 60],
   }),
   noOpNode({
     id: 'asset001-route-without-ai',
@@ -514,6 +716,9 @@ workflow.connections = {
     ],
   },
   'Execute AI Qualification': {
+    main: [[{ node: 'Execute HubSpot Contact Deal', type: 'main', index: 0 }]],
+  },
+  'Execute HubSpot Contact Deal': {
     main: [[{ node: 'Continue Qualification', type: 'main', index: 0 }]],
   },
 };
@@ -874,4 +1079,261 @@ const aiQualificationWorkflow = {
 fs.writeFileSync(
   aiQualificationWorkflowPath,
   `${JSON.stringify(aiQualificationWorkflow, null, 2)}\n`,
+);
+
+const hubspotCrmWorkflow = {
+  id: 'ASSET001HubSpotContactDeal01',
+  name: 'ASSET001 - HubSpot Contact Deal',
+  nodes: [
+    {
+      parameters: {
+        inputSource: 'workflowInputs',
+        workflowInputs: {
+          values: [
+            { name: 'lead', type: 'object' },
+            { name: 'crm_action', type: 'string' },
+            { name: 'crm_match', type: 'object' },
+            { name: 'ai_result', type: 'object' },
+            { name: 'correlation_id', type: 'string' },
+            { name: 'submission_reference', type: 'string' },
+            { name: 'received_at', type: 'string' },
+            { name: 'source', type: 'string' },
+            { name: 'hubspot_pipeline_id', type: 'string' },
+            { name: 'hubspot_dealstage_id', type: 'string' },
+          ],
+        },
+      },
+      type: 'n8n-nodes-base.executeWorkflowTrigger',
+      typeVersion: 1.2,
+      position: [260, 300],
+      id: 'asset001-hubspot-crm-trigger',
+      name: 'When Executed by Another Workflow',
+    },
+    codeNode({
+      id: 'asset001-build-hubspot-crm-request',
+      name: 'Build HubSpot CRM Request',
+      position: [520, 300],
+      jsCode: buildHubspotCrmRequestSource,
+    }),
+    hubspotHttpRequestNode({
+      id: 'asset001-search-existing-deal',
+      name: 'Search Existing Deal',
+      position: [780, 300],
+      method: 'POST',
+      url: 'https://api.hubapi.com/crm/v3/objects/deals/search',
+      body: '={{ JSON.stringify($json.deal.search_request) }}',
+    }),
+    codeNode({
+      id: 'asset001-evaluate-deal-search',
+      name: 'Evaluate Deal Search',
+      position: [1040, 300],
+      jsCode: evaluateDealSearchResultsSource,
+    }),
+    booleanIfNode({
+      id: 'asset001-can-write-crm',
+      name: 'Can Write CRM?',
+      position: [1300, 300],
+      leftValue: '={{ $json.should_write }}',
+    }),
+    {
+      parameters: {
+        conditions: {
+          options: {
+            caseSensitive: true,
+            leftValue: '',
+            typeValidation: 'strict',
+            version: 2,
+          },
+          conditions: [
+            {
+              id: 'asset001-create-contact-condition',
+              leftValue: '={{ $json.crm_request.contact.action }}',
+              rightValue: 'create',
+              operator: {
+                type: 'string',
+                operation: 'equals',
+              },
+            },
+          ],
+          combinator: 'and',
+        },
+        options: {},
+      },
+      type: 'n8n-nodes-base.if',
+      typeVersion: 2.2,
+      position: [1560, 220],
+      id: 'asset001-create-contact',
+      name: 'Create Contact?',
+    },
+    hubspotHttpRequestNode({
+      id: 'asset001-create-hubspot-contact',
+      name: 'Create HubSpot Contact',
+      position: [1820, 140],
+      method: 'POST',
+      url: 'https://api.hubapi.com/crm/v3/objects/contacts',
+      body:
+        '={{ JSON.stringify({ properties: $json.crm_request.contact.properties }) }}',
+    }),
+    hubspotHttpRequestNode({
+      id: 'asset001-update-hubspot-contact',
+      name: 'Update HubSpot Contact',
+      position: [1820, 300],
+      method: 'PATCH',
+      url:
+        '=https://api.hubapi.com/crm/v3/objects/contacts/{{ $json.crm_request.contact.contact_id }}',
+      body:
+        '={{ JSON.stringify({ properties: $json.crm_request.contact.properties }) }}',
+    }),
+    codeNode({
+      id: 'asset001-attach-contact-response',
+      name: 'Attach Contact Response',
+      position: [2080, 220],
+      jsCode: attachHubspotContactResponseSource,
+    }),
+    {
+      parameters: {
+        conditions: {
+          options: {
+            caseSensitive: true,
+            leftValue: '',
+            typeValidation: 'strict',
+            version: 2,
+          },
+          conditions: [
+            {
+              id: 'asset001-create-deal-condition',
+              leftValue: '={{ $json.deal_match.action }}',
+              rightValue: 'create',
+              operator: {
+                type: 'string',
+                operation: 'equals',
+              },
+            },
+          ],
+          combinator: 'and',
+        },
+        options: {},
+      },
+      type: 'n8n-nodes-base.if',
+      typeVersion: 2.2,
+      position: [2340, 220],
+      id: 'asset001-create-deal',
+      name: 'Create Deal?',
+    },
+    hubspotHttpRequestNode({
+      id: 'asset001-create-hubspot-deal',
+      name: 'Create HubSpot Deal',
+      position: [2600, 140],
+      method: 'POST',
+      url: 'https://api.hubapi.com/crm/v3/objects/deals',
+      body:
+        '={{ JSON.stringify({ properties: $json.crm_request.deal.create_properties }) }}',
+    }),
+    hubspotHttpRequestNode({
+      id: 'asset001-update-hubspot-deal',
+      name: 'Update HubSpot Deal',
+      position: [2600, 300],
+      method: 'PATCH',
+      url:
+        '=https://api.hubapi.com/crm/v3/objects/deals/{{ $json.deal_match.deal_id }}',
+      body:
+        '={{ JSON.stringify({ properties: $json.crm_request.deal.update_properties }) }}',
+    }),
+    codeNode({
+      id: 'asset001-attach-deal-response',
+      name: 'Attach Deal Response',
+      position: [2860, 220],
+      jsCode: attachHubspotDealResponseSource,
+    }),
+    hubspotHttpRequestNode({
+      id: 'asset001-associate-contact-deal',
+      name: 'Associate Contact and Deal',
+      position: [3120, 220],
+      method: 'PUT',
+      url:
+        '=https://api.hubapi.com/crm/v4/objects/deals/{{ $json.deal_result.deal_id }}/associations/default/contacts/{{ $json.contact_result.contact_id }}',
+    }),
+    codeNode({
+      id: 'asset001-prepare-hubspot-crm-response',
+      name: 'Prepare HubSpot CRM Response',
+      position: [3380, 220],
+      jsCode: prepareHubspotCrmResponseSource,
+    }),
+    codeNode({
+      id: 'asset001-prepare-deal-review',
+      name: 'Prepare Deal Review',
+      position: [1560, 420],
+      jsCode: prepareHubspotDealReviewSource,
+    }),
+  ],
+  pinData: {},
+  connections: {
+    'When Executed by Another Workflow': {
+      main: [[{ node: 'Build HubSpot CRM Request', type: 'main', index: 0 }]],
+    },
+    'Build HubSpot CRM Request': {
+      main: [[{ node: 'Search Existing Deal', type: 'main', index: 0 }]],
+    },
+    'Search Existing Deal': {
+      main: [[{ node: 'Evaluate Deal Search', type: 'main', index: 0 }]],
+    },
+    'Evaluate Deal Search': {
+      main: [[{ node: 'Can Write CRM?', type: 'main', index: 0 }]],
+    },
+    'Can Write CRM?': {
+      main: [
+        [{ node: 'Create Contact?', type: 'main', index: 0 }],
+        [{ node: 'Prepare Deal Review', type: 'main', index: 0 }],
+      ],
+    },
+    'Create Contact?': {
+      main: [
+        [{ node: 'Create HubSpot Contact', type: 'main', index: 0 }],
+        [{ node: 'Update HubSpot Contact', type: 'main', index: 0 }],
+      ],
+    },
+    'Create HubSpot Contact': {
+      main: [[{ node: 'Attach Contact Response', type: 'main', index: 0 }]],
+    },
+    'Update HubSpot Contact': {
+      main: [[{ node: 'Attach Contact Response', type: 'main', index: 0 }]],
+    },
+    'Attach Contact Response': {
+      main: [[{ node: 'Create Deal?', type: 'main', index: 0 }]],
+    },
+    'Create Deal?': {
+      main: [
+        [{ node: 'Create HubSpot Deal', type: 'main', index: 0 }],
+        [{ node: 'Update HubSpot Deal', type: 'main', index: 0 }],
+      ],
+    },
+    'Create HubSpot Deal': {
+      main: [[{ node: 'Attach Deal Response', type: 'main', index: 0 }]],
+    },
+    'Update HubSpot Deal': {
+      main: [[{ node: 'Attach Deal Response', type: 'main', index: 0 }]],
+    },
+    'Attach Deal Response': {
+      main: [[{ node: 'Associate Contact and Deal', type: 'main', index: 0 }]],
+    },
+    'Associate Contact and Deal': {
+      main: [[{ node: 'Prepare HubSpot CRM Response', type: 'main', index: 0 }]],
+    },
+  },
+  active: false,
+  settings: {
+    executionOrder: 'v1',
+    timezone: 'Europe/Kiev',
+    callerPolicy: 'workflowsFromAList',
+    callerIds: 'ASSET001Form01',
+  },
+  meta: {
+    templateCredsSetupCompleted: true,
+  },
+  tags: [],
+};
+
+fs.writeFileSync(
+  hubspotCrmWorkflowPath,
+  `${JSON.stringify(hubspotCrmWorkflow, null, 2)}\n`,
 );

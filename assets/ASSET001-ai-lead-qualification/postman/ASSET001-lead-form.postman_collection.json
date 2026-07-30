@@ -5,18 +5,6 @@
     "description": "Tests the published ASSET001 n8n Form Trigger. Requests use multipart/form-data and a browser-like User-Agent because the trigger's Ignore Bots option rejects Postman's default User-Agent. A 200 response means the form was accepted; inspect the n8n execution to confirm the workflow branch.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": {
-        "type": "text/javascript",
-        "exec": [
-          "const configuredBaseUrl = pm.variables.replaceIn('{{baseUrl}}');",
-          "pm.variables.set('resolvedBaseUrl', configuredBaseUrl.replace(/\\/+$/, ''));"
-        ]
-      }
-    }
-  ],
   "variable": [
     {
       "key": "baseUrl",
@@ -25,17 +13,12 @@
     },
     {
       "key": "formPath",
-      "value": "/form/asset001-lead-qualification",
-      "type": "string"
-    },
-    {
-      "key": "resolvedBaseUrl",
-      "value": "http://localhost:5681",
+      "value": "form/asset001-lead-qualification",
       "type": "string"
     },
     {
       "key": "idempotencyEmail",
-      "value": "postman.idempotency@example.test",
+      "value": "postman.idempotency@example.com",
       "type": "string"
     },
     {
@@ -55,7 +38,7 @@
             "type": "text/javascript",
             "exec": [
               "const runId = Date.now();",
-              "pm.collectionVariables.set('idempotencyEmail', `postman.idempotency.${runId}@example.test`);",
+              "pm.collectionVariables.set('idempotencyEmail', `postman.idempotency.${runId}@example.com`);",
               "console.log(`Idempotency test email: ${pm.collectionVariables.get('idempotencyEmail')}`);"
             ]
           }
@@ -116,7 +99,7 @@
             },
             {
               "key": "field-5",
-              "value": "https://example.test",
+              "value": "https://example.com",
               "type": "text"
             },
             {
@@ -157,9 +140,9 @@
           ]
         },
         "url": {
-          "raw": "{{resolvedBaseUrl}}{{formPath}}",
+          "raw": "{{baseUrl}}/{{formPath}}",
           "host": [
-            "{{resolvedBaseUrl}}"
+            "{{baseUrl}}"
           ],
           "path": [
             "{{formPath}}"
@@ -228,7 +211,7 @@
             },
             {
               "key": "field-5",
-              "value": "https://example.test",
+              "value": "https://example.com",
               "type": "text"
             },
             {
@@ -269,9 +252,9 @@
           ]
         },
         "url": {
-          "raw": "{{resolvedBaseUrl}}{{formPath}}",
+          "raw": "{{baseUrl}}/{{formPath}}",
           "host": [
-            "{{resolvedBaseUrl}}"
+            "{{baseUrl}}"
           ],
           "path": [
             "{{formPath}}"
@@ -377,9 +360,9 @@
           ]
         },
         "url": {
-          "raw": "{{resolvedBaseUrl}}{{formPath}}",
+          "raw": "{{baseUrl}}/{{formPath}}",
           "host": [
-            "{{resolvedBaseUrl}}"
+            "{{baseUrl}}"
           ],
           "path": [
             "{{formPath}}"

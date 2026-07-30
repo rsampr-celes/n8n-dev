@@ -518,6 +518,7 @@ test('I06 Data Table false bypasses idempotency and continues', () => {
     enabled: false,
     key: null,
     claim_action: 'bypassed',
+    stored_correlation_id: configured.correlation_id,
     should_continue: true,
     outcome: 'continue',
   });

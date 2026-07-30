@@ -7,6 +7,7 @@ return $input.all().map((item, index) => ({
       enabled: false,
       key: null,
       claim_action: 'bypassed',
+      stored_correlation_id: item.json.correlation_id,
       should_continue: true,
       outcome: 'continue',
     },

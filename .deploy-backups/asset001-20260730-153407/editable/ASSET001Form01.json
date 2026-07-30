@@ -1,6 +1,11 @@
 {
+  "updatedAt": "2026-07-30T10:24:06.935Z",
+  "createdAt": "2026-07-26T12:56:18.475Z",
   "id": "ASSET001Form01",
   "name": "ASSET001 - Website Lead Form",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {
@@ -27,7 +32,7 @@
               "fieldName": "email",
               "fieldLabel": "Work email",
               "fieldType": "email",
-              "placeholder": "jane@example.com",
+              "placeholder": "jane@example.test",
               "requiredField": true
             },
             {
@@ -467,143 +472,11 @@
       "name": "Execute AI Qualification"
     },
     {
-      "parameters": {
-        "source": "database",
-        "workflowId": {
-          "__rl": true,
-          "value": "ASSET001HubSpotContactDeal01",
-          "mode": "id"
-        },
-        "workflowInputs": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "lead": "={{ $('Continue After Idempotency?').first().json.lead }}",
-            "crm_action": "={{ $('Execute HubSpot Contact Match').first().json.crm_action }}",
-            "crm_match": "={{ $('Execute HubSpot Contact Match').first().json.crm_match }}",
-            "ai_result": "={{ $('Execute AI Qualification').first().json }}",
-            "correlation_id": "={{ $('Execute Idempotency Guard').first().json.idempotency.stored_correlation_id }}",
-            "submission_reference": "={{ $('Execute Idempotency Guard').first().json.idempotency.key ?? $('Execute Idempotency Guard').first().json.idempotency.stored_correlation_id }}",
-            "received_at": "={{ $now.toISO() }}",
-            "source": "portfolio_demo",
-            "hubspot_pipeline_id": "default",
-            "hubspot_dealstage_id": "appointmentscheduled"
-          },
-          "matchingColumns": [],
-          "schema": [
-            {
-              "id": "lead",
-              "displayName": "lead",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "object"
-            },
-            {
-              "id": "crm_action",
-              "displayName": "crm_action",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "crm_match",
-              "displayName": "crm_match",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "object"
-            },
-            {
-              "id": "ai_result",
-              "displayName": "ai_result",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "object"
-            },
-            {
-              "id": "correlation_id",
-              "displayName": "correlation_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "submission_reference",
-              "displayName": "submission_reference",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "received_at",
-              "displayName": "received_at",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "source",
-              "displayName": "source",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "hubspot_pipeline_id",
-              "displayName": "hubspot_pipeline_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            },
-            {
-              "id": "hubspot_dealstage_id",
-              "displayName": "hubspot_dealstage_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "canBeUsedToMatch": true,
-              "type": "string"
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": false
-        },
-        "mode": "once",
-        "options": {
-          "waitForSubWorkflow": true
-        }
-      },
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.3,
-      "position": [
-        3640,
-        60
-      ],
-      "id": "asset001-execute-hubspot-crm-subflow",
-      "name": "Execute HubSpot Contact Deal"
-    },
-    {
       "parameters": {},
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        3900,
+        3640,
         60
       ],
       "id": "asset001-valid-placeholder",
@@ -643,7 +516,6 @@
       "name": "Record Validation Failure"
     }
   ],
-  "pinData": {},
   "connections": {
     "Website Lead Form": {
       "main": [
@@ -769,17 +641,6 @@
       "main": [
         [
           {
-            "node": "Execute HubSpot Contact Deal",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute HubSpot Contact Deal": {
-      "main": [
-        [
-          {
             "node": "Continue Qualification",
             "type": "main",
             "index": 0
@@ -788,14 +649,44 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1",
     "timezone": "Europe/Kiev"
   },
-  "versionId": "99b8ad0d-9eeb-46d5-8622-dda45c73dd0f",
+  "staticData": null,
   "meta": {
     "templateCredsSetupCompleted": true
   },
-  "tags": []
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "6be2445e-ab7e-434c-8366-44b5c57dc6eb",
+  "activeVersionId": "6be2445e-ab7e-434c-8366-44b5c57dc6eb",
+  "versionCounter": 36,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-26T12:56:18.475Z",
+      "createdAt": "2026-07-26T12:56:18.475Z",
+      "role": "workflow:owner",
+      "workflowId": "ASSET001Form01",
+      "projectId": "4rZFyLIS08DeykZq",
+      "project": {
+        "updatedAt": "2026-07-26T12:26:49.590Z",
+        "createdAt": "2026-07-26T12:24:36.374Z",
+        "id": "4rZFyLIS08DeykZq",
+        "name": "Sam Rajarathinam <sam.rajarathinam@celes7a.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "e0ee685d-6492-4345-abf6-5a8b5c2bbb1b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
 }

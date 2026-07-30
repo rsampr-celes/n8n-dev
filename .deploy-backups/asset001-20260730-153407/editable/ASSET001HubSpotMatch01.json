@@ -1,0 +1,318 @@
+{
+  "updatedAt": "2026-07-30T03:28:02.886Z",
+  "createdAt": "2026-07-29T12:49:01.499Z",
+  "id": "ASSET001HubSpotMatch01",
+  "name": "ASSET001 - HubSpot Contact Match",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        272,
+        304
+      ],
+      "id": "asset001-hubspot-match-trigger",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "contact",
+        "operation": "search",
+        "returnAll": false,
+        "limit": 2,
+        "filterGroupsUi": {
+          "filterGroupsValues": [
+            {
+              "filtersUi": {
+                "filterValues": [
+                  {
+                    "propertyName": "email|string",
+                    "operator": "EQ",
+                    "value": "={{ $('When Executed by Another Workflow').first().json.lead?.email_normalized ?? $('When Executed by Another Workflow').first().json.email_normalized }}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "direction": "DESCENDING",
+          "properties": [
+            "email",
+            "phone"
+          ],
+          "sortBy": "createdate"
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        304
+      ],
+      "id": "asset001-search-hubspot-email",
+      "name": "Search HubSpot by Email",
+      "alwaysOutputData": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "gNSXBziHeO44pSta",
+          "name": "HubspotConnectionSK"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 30000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const normalizedInput = $('When Executed by Another Workflow').first().json;\nconst candidates = $input.all()\n  .filter((item) => item.json?.id !== undefined && item.json?.id !== null)\n  .map((item) => String(item.json.id));\nconst phoneNormalized =\n  normalizedInput.lead?.phone_normalized ??\n  normalizedInput.phone_normalized ??\n  null;\n\nlet nextStep = 'decide';\nlet match;\n\nif (candidates.length === 1) {\n  match = {\n    decision: 'update',\n    status: 'matched',\n    matched_by: 'email',\n    contact_id: candidates[0],\n    match_count: 1,\n    candidate_contact_ids: candidates,\n    review_reason: null,\n  };\n} else if (candidates.length > 1) {\n  match = {\n    decision: 'review',\n    status: 'ambiguous',\n    matched_by: 'email',\n    contact_id: null,\n    match_count: candidates.length,\n    candidate_contact_ids: candidates,\n    review_reason: 'multiple_email_matches',\n  };\n} else if (phoneNormalized) {\n  nextStep = 'search_phone';\n  match = null;\n} else {\n  match = {\n    decision: 'create',\n    status: 'not_found',\n    matched_by: null,\n    contact_id: null,\n    match_count: 0,\n    candidate_contact_ids: [],\n    review_reason: null,\n  };\n}\n\nreturn [{\n  json: {\n    normalized_input: normalizedInput,\n    next_step: nextStep,\n    match,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        304
+      ],
+      "id": "asset001-evaluate-email-results",
+      "name": "Evaluate Email Results"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "asset001-needs-phone-search-condition",
+              "leftValue": "={{ $json.next_step }}",
+              "rightValue": "search_phone",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        304
+      ],
+      "id": "asset001-needs-phone-search",
+      "name": "Search by Phone?"
+    },
+    {
+      "parameters": {
+        "authentication": "appToken",
+        "resource": "contact",
+        "operation": "search",
+        "returnAll": false,
+        "limit": 2,
+        "filterGroupsUi": {
+          "filterGroupsValues": [
+            {
+              "filtersUi": {
+                "filterValues": [
+                  {
+                    "propertyName": "phone|string",
+                    "operator": "EQ",
+                    "value": "={{ $json.normalized_input.lead?.phone_normalized ?? $json.normalized_input.phone_normalized }}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "direction": "DESCENDING",
+          "properties": [
+            "email",
+            "phone",
+            "normalized_phone"
+          ],
+          "sortBy": "createdate"
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1312,
+        224
+      ],
+      "id": "asset001-search-hubspot-phone",
+      "name": "Search HubSpot by Phone",
+      "alwaysOutputData": true,
+      "credentials": {
+        "hubspotAppToken": {
+          "id": "gNSXBziHeO44pSta",
+          "name": "HubspotConnectionSK"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 30000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const emailEvaluation = $('Evaluate Email Results').first().json;\nconst candidates = $input.all()\n  .filter((item) => item.json?.id !== undefined && item.json?.id !== null)\n  .map((item) => String(item.json.id));\n\nlet match;\n\nif (candidates.length === 1) {\n  match = {\n    decision: 'update',\n    status: 'matched',\n    matched_by: 'phone',\n    contact_id: candidates[0],\n    match_count: 1,\n    candidate_contact_ids: candidates,\n    review_reason: null,\n  };\n} else if (candidates.length > 1) {\n  match = {\n    decision: 'review',\n    status: 'ambiguous',\n    matched_by: 'phone',\n    contact_id: null,\n    match_count: candidates.length,\n    candidate_contact_ids: candidates,\n    review_reason: 'multiple_phone_matches',\n  };\n} else {\n  match = {\n    decision: 'create',\n    status: 'not_found',\n    matched_by: null,\n    contact_id: null,\n    match_count: 0,\n    candidate_contact_ids: [],\n    review_reason: null,\n  };\n}\n\nreturn [{\n  json: {\n    normalized_input: emailEvaluation.normalized_input,\n    next_step: 'decide',\n    match,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        224
+      ],
+      "id": "asset001-evaluate-phone-results",
+      "name": "Evaluate Phone Results"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map((item, index) => {\n  return {\n    json: {\n      hubspot_search_success: true,\n      crm_action: item.json.match.decision,\n      crm_match: item.json.match,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1824,
+        304
+      ],
+      "id": "asset001-produce-match-decision",
+      "name": "Produce Match Decision"
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Search HubSpot by Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search HubSpot by Email": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Email Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Email Results": {
+      "main": [
+        [
+          {
+            "node": "Search by Phone?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search by Phone?": {
+      "main": [
+        [
+          {
+            "node": "Search HubSpot by Phone",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Produce Match Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search HubSpot by Phone": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Phone Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Phone Results": {
+      "main": [
+        [
+          {
+            "node": "Produce Match Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Kiev",
+    "callerPolicy": "workflowsFromAList",
+    "callerIds": "ASSET001Form01",
+    "binaryMode": "separate"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "78ac6b8a-3071-4525-96a7-952c5da07fe0",
+  "activeVersionId": "78ac6b8a-3071-4525-96a7-952c5da07fe0",
+  "versionCounter": 17,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-29T12:49:01.499Z",
+      "createdAt": "2026-07-29T12:49:01.499Z",
+      "role": "workflow:owner",
+      "workflowId": "ASSET001HubSpotMatch01",
+      "projectId": "4rZFyLIS08DeykZq",
+      "project": {
+        "updatedAt": "2026-07-26T12:26:49.590Z",
+        "createdAt": "2026-07-26T12:24:36.374Z",
+        "id": "4rZFyLIS08DeykZq",
+        "name": "Sam Rajarathinam <sam.rajarathinam@celes7a.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "e0ee685d-6492-4345-abf6-5a8b5c2bbb1b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
+}

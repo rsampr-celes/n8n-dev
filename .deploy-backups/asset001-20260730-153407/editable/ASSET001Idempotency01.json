@@ -1,6 +1,11 @@
 {
+  "updatedAt": "2026-07-30T09:55:01.329Z",
+  "createdAt": "2026-07-28T15:26:10.833Z",
   "id": "ASSET001Idempotency01",
   "name": "ASSET001 - Idempotency Guard",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {
@@ -100,7 +105,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const workflowInput = $('When Executed by Another Workflow').first().json;\n\nreturn $input.all().map((item, index) => ({\n  json: {\n    lead: workflowInput.lead,\n    idempotency: {\n      enabled: false,\n      key: null,\n      claim_action: 'bypassed',\n      stored_correlation_id: item.json.correlation_id,\n      should_continue: true,\n      outcome: 'continue',\n    },\n  },\n  pairedItem: { item: index },\n}));\n"
+        "jsCode": "const workflowInput = $('When Executed by Another Workflow').first().json;\n\nreturn $input.all().map((item, index) => ({\n  json: {\n    lead: workflowInput.lead,\n    idempotency: {\n      enabled: false,\n      key: null,\n      claim_action: 'bypassed',\n      should_continue: true,\n      outcome: 'continue',\n    },\n  },\n  pairedItem: { item: index },\n}));\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -276,7 +281,6 @@
       "name": "Finalize Idempotency Result"
     }
   ],
-  "pinData": {},
   "connections": {
     "When Executed by Another Workflow": {
       "main": [
@@ -384,15 +388,46 @@
       ]
     }
   },
-  "active": false,
   "settings": {
     "executionOrder": "v1",
     "timezone": "Europe/Kiev",
     "callerPolicy": "workflowsFromAList",
     "callerIds": "ASSET001Form01"
   },
+  "staticData": null,
   "meta": {
     "templateCredsSetupCompleted": true
   },
-  "tags": []
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "0022ec70-9cb0-46b0-a196-7b96b91104dd",
+  "activeVersionId": "0022ec70-9cb0-46b0-a196-7b96b91104dd",
+  "versionCounter": 8,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-07-28T15:26:10.833Z",
+      "createdAt": "2026-07-28T15:26:10.833Z",
+      "role": "workflow:owner",
+      "workflowId": "ASSET001Idempotency01",
+      "projectId": "4rZFyLIS08DeykZq",
+      "project": {
+        "updatedAt": "2026-07-26T12:26:49.590Z",
+        "createdAt": "2026-07-26T12:24:36.374Z",
+        "id": "4rZFyLIS08DeykZq",
+        "name": "Sam Rajarathinam <sam.rajarathinam@celes7a.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "e0ee685d-6492-4345-abf6-5a8b5c2bbb1b"
+      }
+    }
+  ],
+  "versionMetadata": {
+    "name": null,
+    "description": null
+  }
 }
