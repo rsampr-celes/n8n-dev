@@ -60,7 +60,10 @@
           "id": "gNSXBziHeO44pSta",
           "name": "HubspotConnectionSK"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 30000
     },
     {
       "parameters": {
@@ -155,7 +158,10 @@
           "id": "gNSXBziHeO44pSta",
           "name": "HubspotConnectionSK"
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 30000
     },
     {
       "parameters": {
@@ -174,7 +180,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "return $input.all().map((item, index) => {\n  return {\n    json: {\n      crm_match: item.json.match,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+        "jsCode": "return $input.all().map((item, index) => {\n  return {\n    json: {\n      hubspot_search_success: true,\n      crm_action: item.json.match.decision,\n      crm_match: item.json.match,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,

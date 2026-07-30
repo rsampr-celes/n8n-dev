@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:celes7a:schema:asset001:ai-qualification-response:1.0.0",
+  "title": "ASSET001 AI Qualification Response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "service_category",
+    "problem_summary",
+    "urgency",
+    "purchase_intent",
+    "estimated_fit_score",
+    "confidence",
+    "missing_information",
+    "qualification_reason",
+    "recommended_action",
+    "response_draft"
+  ],
+  "properties": {
+    "service_category": {
+      "type": "string",
+      "enum": [
+        "api_integration",
+        "crm_automation",
+        "ai_workflow",
+        "data_integration",
+        "other",
+        "unknown"
+      ]
+    },
+    "problem_summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "urgency": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "unknown"]
+    },
+    "purchase_intent": {
+      "type": "string",
+      "enum": ["weak", "moderate", "strong", "unknown"]
+    },
+    "estimated_fit_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "missing_information": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "enum": [
+          "service_requested",
+          "enquiry_message",
+          "budget_band",
+          "timeline_band",
+          "company_description"
+        ]
+      }
+    },
+    "qualification_reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "recommended_action": {
+      "type": "string",
+      "enum": ["sales_follow_up", "human_review", "nurture"]
+    },
+    "response_draft": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    }
+  }
+}

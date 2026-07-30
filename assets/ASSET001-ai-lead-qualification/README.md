@@ -9,6 +9,7 @@ The workflow captures:
 
 - Separate first name, last name, and work email
 - Optional phone, company, website, and country
+- Optional company description used as sanitized AI business context
 - Requested service and project description
 - Estimated budget and expected timeline
 - Required consent
@@ -63,7 +64,21 @@ The main workflow calls this sub-workflow after a new idempotency claim.
 the successful idempotency control signal on input 2. It waits for both, outputs
 input 1 unchanged, and passes that same normalized JSON to **Execute HubSpot
 Contact Match**. The matching result then continues through the existing
-**Continue Qualification** boundary.
+the HubSpot result is merged with the preserved normalized lead. **Determine AI
+Invocation** allows only successful `create` and `update` outcomes to continue.
+Ambiguous matches and failed searches end at **Route Without AI**.
+
+A separate **AI Qualification** sub-workflow:
+
+- Builds a request containing only service, enquiry, budget, timeline, and
+  optional company-description business context.
+- Calls OpenAI Chat Completions using strict Structured Outputs.
+- Validates the returned object again in n8n, including fixed enums and numeric
+  ranges.
+- Retries one schema-invalid response with the validation errors.
+- Stores the AI score and recommendation as advisory evidence.
+- Calculates a separate deterministic score and route in n8n.
+- Routes invalid model output and confidence below `0.75` to human review.
 
 The Postgres node expects an n8n credential named
 `ASSET001 Audit PostgreSQL`. Apply
@@ -82,10 +97,20 @@ Idempotency sub-workflow:
 HubSpot contact-match sub-workflow:
 `workflows/ASSET001-hubspot-contact-match.json`
 
-The workflow exports use stable IDs. Import the sub-workflows before the parent
+AI qualification sub-workflow:
+`workflows/ASSET001-ai-qualification.json`
+
+The workflow exports use stable IDs. Import all three sub-workflows before the parent
 workflow, then publish the required workflows. Each called child must remain
 published because n8n only permits **Execute Sub-workflow** to call a published
 workflow.
+
+The local workflow export references the n8n OpenAI credential named
+`OpenAI account`. Select the environment's OpenAI credential on both
+**Invoke OpenAI** nodes after importing into another n8n instance. The generated workflow uses
+`gpt-5-mini` by default; an `ai_model` value supplied by trusted workflow
+configuration overrides that default. Do not take the model identifier from
+the public form.
 
 The HubSpot workflow uses the n8n Service Key credential named
 `HubspotConnectionSK`. Store normalized E.164 values in HubSpot's standard
@@ -145,6 +170,7 @@ to overwrite the existing workflow.
 ```text
 schemas/lead-submission.schema.json
 schemas/validation-error.schema.json
+schemas/ai-qualification-response.schema.json
 src/normalize-lead.js
 src/validate-lead.js
 src/apply-idempotency-config.js
@@ -154,14 +180,24 @@ src/bypass-idempotency.js
 src/evaluate-email-results.js
 src/evaluate-phone-results.js
 src/produce-match-decision.js
+src/determine-ai-invocation.js
+src/build-ai-request.js
+src/attach-ai-provider-response.js
+src/build-ai-correction-request.js
+src/attach-ai-correction-response.js
+src/validate-ai-response.js
+src/calculate-deterministic-score.js
+src/prepare-ai-review-outcome.js
 scripts/build-workflow.mjs
 tests/validation.test.mjs
 tests/hubspot-contact-match.test.mjs
+tests/ai-qualification.test.mjs
 tests/validation-scenarios.md
 examples/valid-lead.json
 examples/invalid-lead.json
 workflows/ASSET001-website-lead-form.json
 workflows/ASSET001-idempotency-guard.json
 workflows/ASSET001-hubspot-contact-match.json
+workflows/ASSET001-ai-qualification.json
 postman/ASSET001-lead-form.postman_collection.json
 ```

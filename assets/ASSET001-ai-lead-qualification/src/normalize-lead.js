@@ -81,6 +81,7 @@ function normalizeLead(raw) {
   const lead = {
     phone_normalized: normalizePhone(raw.phone),
     company: optionalText(raw.company),
+    company_description: optionalText(raw.company_description),
     company_website: normalizeUrl(raw.company_website),
     service_requested: normalizeMapped(raw.service_requested, SERVICE_MAP),
     budget_band: normalizeMapped(raw.budget, BUDGET_MAP),

@@ -35,6 +35,10 @@
       "type": ["string", "null"],
       "maxLength": 160
     },
+    "company_description": {
+      "type": ["string", "null"],
+      "maxLength": 500
+    },
     "company_website": {
       "type": ["string", "null"],
       "format": "uri",

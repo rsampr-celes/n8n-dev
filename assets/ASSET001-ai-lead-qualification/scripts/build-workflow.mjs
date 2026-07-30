@@ -14,6 +14,10 @@ const hubspotMatchWorkflowPath = path.join(
   workflowsDirectory,
   'ASSET001-hubspot-contact-match.json',
 );
+const aiQualificationWorkflowPath = path.join(
+  workflowsDirectory,
+  'ASSET001-ai-qualification.json',
+);
 const sourceDirectory = path.join(assetDirectory, 'src');
 const normalizationSourcePath = path.join(sourceDirectory, 'normalize-lead.js');
 const validationSourcePath = path.join(sourceDirectory, 'validate-lead.js');
@@ -47,6 +51,53 @@ const evaluatePhoneResultsSource = fs.readFileSync(
 );
 const produceMatchDecisionSource = fs.readFileSync(
   path.join(sourceDirectory, 'produce-match-decision.js'),
+  'utf8',
+);
+const determineAiInvocationSource = fs.readFileSync(
+  path.join(sourceDirectory, 'determine-ai-invocation.js'),
+  'utf8',
+);
+const aiResponseSchema = JSON.parse(fs.readFileSync(
+  path.join(assetDirectory, 'schemas', 'ai-qualification-response.schema.json'),
+  'utf8',
+));
+const openAiCompatibleSchema = structuredClone(aiResponseSchema);
+delete openAiCompatibleSchema.$schema;
+delete openAiCompatibleSchema.$id;
+delete openAiCompatibleSchema.title;
+delete openAiCompatibleSchema.properties.missing_information.uniqueItems;
+const buildAiRequestSource = fs.readFileSync(
+  path.join(sourceDirectory, 'build-ai-request.js'),
+  'utf8',
+).replace(
+  '__AI_RESPONSE_SCHEMA__',
+  JSON.stringify(openAiCompatibleSchema),
+);
+const attachAiProviderResponseSource = fs.readFileSync(
+  path.join(sourceDirectory, 'attach-ai-provider-response.js'),
+  'utf8',
+);
+const buildAiCorrectionRequestSource = fs.readFileSync(
+  path.join(sourceDirectory, 'build-ai-correction-request.js'),
+  'utf8',
+).replace(
+  '__AI_RESPONSE_SCHEMA__',
+  JSON.stringify(openAiCompatibleSchema),
+);
+const attachAiCorrectionResponseSource = fs.readFileSync(
+  path.join(sourceDirectory, 'attach-ai-correction-response.js'),
+  'utf8',
+);
+const validateAiResponseSource = fs.readFileSync(
+  path.join(sourceDirectory, 'validate-ai-response.js'),
+  'utf8',
+);
+const deterministicScoreSource = fs.readFileSync(
+  path.join(sourceDirectory, 'calculate-deterministic-score.js'),
+  'utf8',
+);
+const prepareAiReviewOutcomeSource = fs.readFileSync(
+  path.join(sourceDirectory, 'prepare-ai-review-outcome.js'),
   'utf8',
 );
 function booleanIfNode({ id, name, position, leftValue }) {
@@ -149,6 +200,92 @@ function noOpNode({ id, name, position }) {
   };
 }
 
+function executeWorkflowNode({ id, name, position, workflowId }) {
+  return {
+    parameters: {
+      source: 'database',
+      workflowId: {
+        __rl: true,
+        value: workflowId,
+        mode: 'id',
+      },
+      workflowInputs: {
+        mappingMode: 'defineBelow',
+        value: {},
+        matchingColumns: [],
+        schema: [],
+        attemptToConvertTypes: false,
+        convertFieldsToString: true,
+      },
+      mode: 'once',
+      options: {
+        waitForSubWorkflow: true,
+      },
+    },
+    type: 'n8n-nodes-base.executeWorkflow',
+    typeVersion: 1.3,
+    position,
+    id,
+    name,
+  };
+}
+
+function mergeByPositionNode({ id, name, position }) {
+  return {
+    parameters: {
+      mode: 'combine',
+      combineBy: 'combineByPosition',
+      options: {},
+    },
+    type: 'n8n-nodes-base.merge',
+    typeVersion: 3.2,
+    position,
+    id,
+    name,
+  };
+}
+
+function openAiRequestNode({ id, name, position }) {
+  return {
+    parameters: {
+      method: 'POST',
+      url: 'https://api.openai.com/v1/chat/completions',
+      authentication: 'predefinedCredentialType',
+      nodeCredentialType: 'openAiApi',
+      sendHeaders: true,
+      headerParameters: {
+        parameters: [
+          {
+            name: 'Content-Type',
+            value: 'application/json',
+          },
+        ],
+      },
+      sendBody: true,
+      contentType: 'raw',
+      rawContentType: 'application/json',
+      body: '={{ JSON.stringify($json) }}',
+      options: {
+        timeout: 60000,
+      },
+    },
+    type: 'n8n-nodes-base.httpRequest',
+    typeVersion: 4.3,
+    position,
+    id,
+    name,
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 30000,
+    credentials: {
+      openAiApi: {
+        id: '4PtmLVMwWUnSv4NM',
+        name: 'OpenAI account',
+      },
+    },
+  };
+}
+
 const managedNodeIds = new Set([
   'asset001-normalize-validate',
   'asset001-normalize',
@@ -178,6 +315,11 @@ const managedNodeIds = new Set([
   'asset001-prepare-hubspot-match-input',
   'asset001-execute-hubspot-match-subflow',
   'asset001-wait-for-idempotency',
+  'asset001-merge-qualification-context',
+  'asset001-determine-ai-invocation',
+  'asset001-should-invoke-ai',
+  'asset001-execute-ai-qualification-subflow',
+  'asset001-route-without-ai',
 ]);
 
 workflow.nodes = workflow.nodes.filter((node) => !managedNodeIds.has(node.id));
@@ -262,36 +404,46 @@ workflow.nodes.push(
     name: 'Wait for Idempotency',
   },
   {
-    parameters: {
-      source: 'database',
-      workflowId: {
-        __rl: true,
-        value: 'ASSET001HubSpotMatch01',
-        mode: 'id',
-      },
-      workflowInputs: {
-        mappingMode: 'defineBelow',
-        value: {},
-        matchingColumns: [],
-        schema: [],
-        attemptToConvertTypes: false,
-        convertFieldsToString: true,
-      },
-      mode: 'once',
-      options: {
-        waitForSubWorkflow: true,
-      },
-    },
-    type: 'n8n-nodes-base.executeWorkflow',
-    typeVersion: 1.3,
-    position: [2340, 140],
-    id: 'asset001-execute-hubspot-match-subflow',
-    name: 'Execute HubSpot Contact Match',
+    ...executeWorkflowNode({
+      id: 'asset001-execute-hubspot-match-subflow',
+      name: 'Execute HubSpot Contact Match',
+      position: [2340, 140],
+      workflowId: 'ASSET001HubSpotMatch01',
+    }),
+    onError: 'continueRegularOutput',
   },
+  mergeByPositionNode({
+    id: 'asset001-merge-qualification-context',
+    name: 'Merge Qualification Context',
+    position: [2600, 140],
+  }),
+  codeNode({
+    id: 'asset001-determine-ai-invocation',
+    name: 'Determine AI Invocation',
+    position: [2860, 140],
+    jsCode: determineAiInvocationSource,
+  }),
+  booleanIfNode({
+    id: 'asset001-should-invoke-ai',
+    name: 'Invoke AI?',
+    position: [3120, 140],
+    leftValue: '={{ $json.continue_to_ai }}',
+  }),
+  executeWorkflowNode({
+    id: 'asset001-execute-ai-qualification-subflow',
+    name: 'Execute AI Qualification',
+    position: [3380, 60],
+    workflowId: 'ASSET001AIQualification01',
+  }),
   noOpNode({
     id: 'asset001-valid-placeholder',
     name: 'Continue Qualification',
-    position: [2600, 140],
+    position: [3640, 60],
+  }),
+  noOpNode({
+    id: 'asset001-route-without-ai',
+    name: 'Route Without AI',
+    position: [3380, 220],
   }),
   noOpNode({
     id: 'asset001-duplicate-handled',
@@ -340,9 +492,27 @@ workflow.connections = {
     ],
   },
   'Wait for Idempotency': {
-    main: [[{ node: 'Execute HubSpot Contact Match', type: 'main', index: 0 }]],
+    main: [[
+      { node: 'Execute HubSpot Contact Match', type: 'main', index: 0 },
+      { node: 'Merge Qualification Context', type: 'main', index: 0 },
+    ]],
   },
   'Execute HubSpot Contact Match': {
+    main: [[{ node: 'Merge Qualification Context', type: 'main', index: 1 }]],
+  },
+  'Merge Qualification Context': {
+    main: [[{ node: 'Determine AI Invocation', type: 'main', index: 0 }]],
+  },
+  'Determine AI Invocation': {
+    main: [[{ node: 'Invoke AI?', type: 'main', index: 0 }]],
+  },
+  'Invoke AI?': {
+    main: [
+      [{ node: 'Execute AI Qualification', type: 'main', index: 0 }],
+      [{ node: 'Route Without AI', type: 'main', index: 0 }],
+    ],
+  },
+  'Execute AI Qualification': {
     main: [[{ node: 'Continue Qualification', type: 'main', index: 0 }]],
   },
 };
@@ -535,4 +705,164 @@ for (const [nodeName, source] of hubspotCodeSources) {
 fs.writeFileSync(
   hubspotMatchWorkflowPath,
   `${JSON.stringify(hubspotMatchWorkflow, null, 2)}\n`,
+);
+
+for (const node of hubspotMatchWorkflow.nodes) {
+  if (node.type === 'n8n-nodes-base.hubspot') {
+    node.retryOnFail = true;
+    node.maxTries = 3;
+    node.waitBetweenTries = 30000;
+  }
+}
+
+fs.writeFileSync(
+  hubspotMatchWorkflowPath,
+  `${JSON.stringify(hubspotMatchWorkflow, null, 2)}\n`,
+);
+
+const aiQualificationWorkflow = {
+  id: 'ASSET001AIQualification01',
+  name: 'ASSET001 - AI Qualification',
+  nodes: [
+    {
+      parameters: {
+        inputSource: 'passthrough',
+      },
+      type: 'n8n-nodes-base.executeWorkflowTrigger',
+      typeVersion: 1.2,
+      position: [260, 300],
+      id: 'asset001-ai-trigger',
+      name: 'When Executed by Another Workflow',
+    },
+    codeNode({
+      id: 'asset001-build-ai-request',
+      name: 'Build AI Request',
+      position: [520, 300],
+      jsCode: buildAiRequestSource,
+    }),
+    openAiRequestNode({
+      id: 'asset001-invoke-openai',
+      name: 'Invoke OpenAI',
+      position: [780, 300],
+    }),
+    codeNode({
+      id: 'asset001-attach-ai-provider-response',
+      name: 'Attach AI Provider Response',
+      position: [1040, 300],
+      jsCode: attachAiProviderResponseSource,
+    }),
+    codeNode({
+      id: 'asset001-validate-ai-response',
+      name: 'Validate AI Response',
+      position: [1300, 300],
+      jsCode: validateAiResponseSource,
+    }),
+    booleanIfNode({
+      id: 'asset001-is-ai-response-valid',
+      name: 'Is AI Response Valid?',
+      position: [1560, 300],
+      leftValue: '={{ $json.ai_validation.is_valid }}',
+    }),
+    codeNode({
+      id: 'asset001-calculate-deterministic-score',
+      name: 'Calculate Deterministic Score',
+      position: [3120, 220],
+      jsCode: deterministicScoreSource,
+    }),
+    codeNode({
+      id: 'asset001-build-ai-correction-request',
+      name: 'Build AI Correction Request',
+      position: [1820, 380],
+      jsCode: buildAiCorrectionRequestSource,
+    }),
+    openAiRequestNode({
+      id: 'asset001-invoke-openai-correction',
+      name: 'Invoke OpenAI Correction',
+      position: [2080, 380],
+    }),
+    codeNode({
+      id: 'asset001-attach-ai-correction-response',
+      name: 'Attach AI Correction Response',
+      position: [2340, 380],
+      jsCode: attachAiCorrectionResponseSource,
+    }),
+    codeNode({
+      id: 'asset001-validate-ai-correction-response',
+      name: 'Validate AI Correction Response',
+      position: [2600, 380],
+      jsCode: validateAiResponseSource,
+    }),
+    booleanIfNode({
+      id: 'asset001-is-ai-correction-valid',
+      name: 'Is AI Correction Valid?',
+      position: [2860, 380],
+      leftValue: '={{ $json.ai_validation.is_valid }}',
+    }),
+    codeNode({
+      id: 'asset001-prepare-ai-review-outcome',
+      name: 'Prepare AI Review Outcome',
+      position: [3120, 460],
+      jsCode: prepareAiReviewOutcomeSource,
+    }),
+  ],
+  pinData: {},
+  connections: {
+    'When Executed by Another Workflow': {
+      main: [[
+        { node: 'Build AI Request', type: 'main', index: 0 },
+      ]],
+    },
+    'Build AI Request': {
+      main: [[{ node: 'Invoke OpenAI', type: 'main', index: 0 }]],
+    },
+    'Invoke OpenAI': {
+      main: [[{ node: 'Attach AI Provider Response', type: 'main', index: 0 }]],
+    },
+    'Attach AI Provider Response': {
+      main: [[{ node: 'Validate AI Response', type: 'main', index: 0 }]],
+    },
+    'Validate AI Response': {
+      main: [[{ node: 'Is AI Response Valid?', type: 'main', index: 0 }]],
+    },
+    'Is AI Response Valid?': {
+      main: [
+        [{ node: 'Calculate Deterministic Score', type: 'main', index: 0 }],
+        [{ node: 'Build AI Correction Request', type: 'main', index: 0 }],
+      ],
+    },
+    'Build AI Correction Request': {
+      main: [[{ node: 'Invoke OpenAI Correction', type: 'main', index: 0 }]],
+    },
+    'Invoke OpenAI Correction': {
+      main: [[{ node: 'Attach AI Correction Response', type: 'main', index: 0 }]],
+    },
+    'Attach AI Correction Response': {
+      main: [[{ node: 'Validate AI Correction Response', type: 'main', index: 0 }]],
+    },
+    'Validate AI Correction Response': {
+      main: [[{ node: 'Is AI Correction Valid?', type: 'main', index: 0 }]],
+    },
+    'Is AI Correction Valid?': {
+      main: [
+        [{ node: 'Calculate Deterministic Score', type: 'main', index: 0 }],
+        [{ node: 'Prepare AI Review Outcome', type: 'main', index: 0 }],
+      ],
+    },
+  },
+  active: false,
+  settings: {
+    executionOrder: 'v1',
+    timezone: 'Europe/Kiev',
+    callerPolicy: 'workflowsFromAList',
+    callerIds: 'ASSET001Form01',
+  },
+  meta: {
+    templateCredsSetupCompleted: true,
+  },
+  tags: [],
+};
+
+fs.writeFileSync(
+  aiQualificationWorkflowPath,
+  `${JSON.stringify(aiQualificationWorkflow, null, 2)}\n`,
 );

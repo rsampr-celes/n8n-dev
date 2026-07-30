@@ -146,6 +146,11 @@
             },
             {
               "key": "field-11",
+              "value": "B2B service company",
+              "type": "text"
+            },
+            {
+              "key": "field-12",
               "value": "[\"I consent to the processing of this demonstration enquiry\"]",
               "type": "text"
             }
@@ -253,6 +258,11 @@
             },
             {
               "key": "field-11",
+              "value": "B2B service company",
+              "type": "text"
+            },
+            {
+              "key": "field-12",
               "value": "[\"I consent to the processing of this demonstration enquiry\"]",
               "type": "text"
             }
@@ -356,6 +366,11 @@
             },
             {
               "key": "field-11",
+              "value": "",
+              "type": "text"
+            },
+            {
+              "key": "field-12",
               "value": "[]",
               "type": "text"
             }

@@ -4,6 +4,7 @@ const FIELD_LABELS = {
   email_normalized: 'Email',
   phone_normalized: 'Phone',
   company: 'Company',
+  company_description: 'Company description',
   company_website: 'Company website',
   service_requested: 'Service requested',
   message_sanitized: 'Message',
@@ -218,6 +219,7 @@ function validateLead(lead) {
   validateString(errors, lead, 'email_normalized', { maxLength: 254 });
   validateString(errors, lead, 'message_sanitized', { minLength: 1, maxLength: 5000 });
   validateNullableString(errors, lead, 'company', 160);
+  validateNullableString(errors, lead, 'company_description', 500);
   validateNullableString(errors, lead, 'country', 100);
 
   const email = lead.email_normalized;

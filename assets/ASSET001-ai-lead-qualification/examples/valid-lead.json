@@ -4,6 +4,7 @@
   "email": " JANE@EXAMPLE.TEST ",
   "phone": "+1 (555) 010-2000",
   "company": " Northwind   Services ",
+  "company_description": " B2B service company ",
   "company_website": "HTTPS://Example.TEST/services#contact",
   "service_requested": "API integration",
   "message": "  Connect our website leads with HubSpot.  ",

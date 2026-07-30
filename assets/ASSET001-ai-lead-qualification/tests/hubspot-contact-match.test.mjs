@@ -255,6 +255,8 @@ test('zero email and phone matches return only the create decision', () => {
   const result = finalize(evaluation);
 
   assert.deepEqual(result, {
+    hubspot_search_success: true,
+    crm_action: 'create',
     crm_match: {
       decision: 'create',
       status: 'not_found',

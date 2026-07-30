@@ -21,6 +21,7 @@ complete preceding payload unless every field is required by the next stage.
 | `email` | Work email | email | Yes | `lead.email_normalized` | Trim and lowercase. | Omit. | Required email string; maximum 254 characters. |
 | `phone` | Phone number | text | No | `lead.phone_normalized` | Trim; remove whitespace, parentheses, periods, and hyphens. | `null` | String or `null`; must match `^\+[1-9]\d{6,14}$`. |
 | `company` | Company | text | No | `lead.company` | Trim and collapse whitespace runs. | `null` | String or `null`; maximum 160 characters. |
+| `company_description` | Company description | textarea | No | `lead.company_description` | Trim and collapse whitespace runs. | `null` | String or `null`; maximum 500 characters. |
 | `company_website` | Company website | text | No | `lead.company_website` | Trim, remove the fragment, lowercase the HTTP(S) scheme and authority, and add `/` when the path is empty. Invalid input remains trimmed for validation to reject. | `null` | HTTP(S) URL string or `null`; valid hostname and optional port; maximum 2,048 characters. |
 | `service_requested` | Service requested | dropdown | No | `lead.service_requested` | Normalize whitespace and map to the canonical value below. | `null` | Canonical enum string or `null`. |
 | `message` | Tell us about your requirement | textarea | Yes | `lead.message_sanitized` | Normalize line endings, remove disallowed control characters, and trim. | Omit. | Required string; length 1–5,000. |
@@ -84,6 +85,7 @@ Source:
   "email": " JANE@EXAMPLE.TEST ",
   "phone": "+1 (555) 010-2000",
   "company": " Northwind   Services ",
+  "company_description": " B2B service company ",
   "company_website": "HTTPS://Example.TEST/services#contact",
   "service_requested": "API integration",
   "message": "  Connect our website leads with HubSpot.  ",
@@ -103,6 +105,7 @@ Destination:
   "lead": {
     "phone_normalized": "+15550102000",
     "company": "Northwind Services",
+    "company_description": "B2B service company",
     "company_website": "https://example.test/services",
     "service_requested": "api_integration",
     "budget_band": "5000_10000",
@@ -132,6 +135,7 @@ Sources:
     "lead": {
       "phone_normalized": "+15550102000",
       "company": "Northwind Services",
+      "company_description": "B2B service company",
       "company_website": "https://example.test/services",
       "service_requested": "api_integration",
       "budget_band": "5000_10000",
@@ -257,10 +261,30 @@ Destination:
 
 ### Pass-through decision stages
 
-`Is Lead Valid?`, `Is Idempotency Enabled?`, and
-`Continue After Idempotency?` route items but do not change their JSON.
+`Is Lead Valid?`, `Is Idempotency Enabled?`, `Continue After Idempotency?`,
+and `Invoke AI?` route items but do not change their JSON.
 
-The current `Continue Qualification` placeholder receives only the final
-`idempotency` decision. When qualification is implemented, its stage should
-select only the normalized lead fields it requires instead of restoring every
-earlier field.
+After idempotency, the parent sends the normalized lead to HubSpot matching and
+also preserves it in `Merge Qualification Context`. The HubSpot child returns:
+
+```json
+{
+  "hubspot_search_success": true,
+  "crm_action": "create",
+  "crm_match": {
+    "decision": "create",
+    "status": "not_found",
+    "matched_by": null,
+    "contact_id": null,
+    "match_count": 0,
+    "candidate_contact_ids": [],
+    "review_reason": null
+  }
+}
+```
+
+`Determine AI Invocation` adds `continue_to_ai=true` only for successful
+`create` and `update` outcomes. The AI child then sends only
+`service_requested`, `enquiry_message`, `budget_band`, `timeline_band`, and
+`company_description` to OpenAI. See `docs/ai-request-response.md` for the
+response contract and deterministic score mapping.

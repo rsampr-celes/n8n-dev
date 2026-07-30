@@ -158,6 +158,7 @@ test('V01 complete valid lead is normalized and valid', () => {
   assert.equal(result.lead.last_name, 'Smith');
   assert.equal(result.lead.email_normalized, 'jane@example.test');
   assert.equal(result.lead.phone_normalized, '+15550102000');
+  assert.equal(result.lead.company_description, 'B2B service company');
   assert.equal(result.lead.company_website, 'https://example.test/services');
 });
 
@@ -311,6 +312,7 @@ test('V17 blank optional fields become null and remain valid', () => {
   for (const field of [
     'phone',
     'company',
+    'company_description',
     'company_website',
     'service_requested',
     'budget',
@@ -323,6 +325,7 @@ test('V17 blank optional fields become null and remain valid', () => {
   assert.equal(result.validation.is_valid, true);
   assert.equal(result.lead.phone_normalized, null);
   assert.equal(result.lead.company, null);
+  assert.equal(result.lead.company_description, null);
   assert.equal(result.lead.company_website, null);
   assert.equal(result.lead.service_requested, null);
   assert.equal(result.lead.budget_band, null);
