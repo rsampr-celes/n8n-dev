@@ -104,8 +104,12 @@ const prepareAiReviewOutcomeSource = fs.readFileSync(
   path.join(sourceDirectory, 'prepare-ai-review-outcome.js'),
   'utf8',
 );
-const buildHubspotCrmRequestSource = fs.readFileSync(
-  path.join(sourceDirectory, 'build-hubspot-crm-request.js'),
+const buildHubspotContactRequestSource = fs.readFileSync(
+  path.join(sourceDirectory, 'build-hubspot-contact-request.js'),
+  'utf8',
+);
+const buildHubspotDealRequestSource = fs.readFileSync(
+  path.join(sourceDirectory, 'build-hubspot-deal-request.js'),
   'utf8',
 );
 const evaluateDealSearchResultsSource = fs.readFileSync(
@@ -355,6 +359,30 @@ function hubspotHttpRequestNode({
     position,
     id,
     name,
+    retryOnFail: true,
+    maxTries: 3,
+    waitBetweenTries: 30000,
+    credentials: {
+      hubspotAppToken: {
+        id: 'gNSXBziHeO44pSta',
+        name: 'HubspotConnectionSK',
+      },
+    },
+  };
+}
+
+function hubspotNode({ id, name, position, parameters, alwaysOutputData }) {
+  return {
+    parameters: {
+      authentication: 'appToken',
+      ...parameters,
+    },
+    type: 'n8n-nodes-base.hubspot',
+    typeVersion: 2.2,
+    position,
+    id,
+    name,
+    ...(alwaysOutputData ? { alwaysOutputData: true } : {}),
     retryOnFail: true,
     maxTries: 3,
     waitBetweenTries: 30000,
@@ -1110,18 +1138,46 @@ const hubspotCrmWorkflow = {
       name: 'When Executed by Another Workflow',
     },
     codeNode({
-      id: 'asset001-build-hubspot-crm-request',
-      name: 'Build HubSpot CRM Request',
+      id: 'asset001-build-hubspot-deal-request',
+      name: 'Build HubSpot Deal Request',
       position: [520, 300],
-      jsCode: buildHubspotCrmRequestSource,
+      jsCode: buildHubspotDealRequestSource,
     }),
-    hubspotHttpRequestNode({
+    hubspotNode({
       id: 'asset001-search-existing-deal',
       name: 'Search Existing Deal',
       position: [780, 300],
-      method: 'POST',
-      url: 'https://api.hubapi.com/crm/v3/objects/deals/search',
-      body: '={{ JSON.stringify($json.deal.search_request) }}',
+      alwaysOutputData: true,
+      parameters: {
+        resource: 'deal',
+        operation: 'search',
+        returnAll: false,
+        limit: 2,
+        filterGroupsUi: {
+          filterGroupsValues: [
+            {
+              filtersUi: {
+                filterValues: [
+                  {
+                    propertyName: 'workflow_correlation_id|string',
+                    operator: 'EQ',
+                    value: '={{ $json.correlation_id }}',
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        additionalFields: {
+          direction: 'DESCENDING',
+          properties: [
+            'dealname',
+            'workflow_correlation_id',
+            'original_submission_reference',
+          ],
+          sortBy: 'createdate',
+        },
+      },
     }),
     codeNode({
       id: 'asset001-evaluate-deal-search',
@@ -1135,6 +1191,12 @@ const hubspotCrmWorkflow = {
       position: [1300, 300],
       leftValue: '={{ $json.should_write }}',
     }),
+    codeNode({
+      id: 'asset001-build-hubspot-contact-request',
+      name: 'Build HubSpot Contact Request',
+      position: [1560, 220],
+      jsCode: buildHubspotContactRequestSource,
+    }),
     {
       parameters: {
         conditions: {
@@ -1146,9 +1208,9 @@ const hubspotCrmWorkflow = {
           },
           conditions: [
             {
-              id: 'asset001-create-contact-condition',
-              leftValue: '={{ $json.crm_request.contact.action }}',
-              rightValue: 'create',
+              id: 'asset001-use-contact-upsert-condition',
+              leftValue: '={{ $json.contact_request.write_mode }}',
+              rightValue: 'upsert_by_email',
               operator: {
                 type: 'string',
                 operation: 'equals',
@@ -1161,33 +1223,68 @@ const hubspotCrmWorkflow = {
       },
       type: 'n8n-nodes-base.if',
       typeVersion: 2.2,
-      position: [1560, 220],
-      id: 'asset001-create-contact',
-      name: 'Create Contact?',
+      position: [1820, 220],
+      id: 'asset001-use-contact-upsert',
+      name: 'Use Contact Upsert?',
     },
-    hubspotHttpRequestNode({
-      id: 'asset001-create-hubspot-contact',
-      name: 'Create HubSpot Contact',
-      position: [1820, 140],
-      method: 'POST',
-      url: 'https://api.hubapi.com/crm/v3/objects/contacts',
-      body:
-        '={{ JSON.stringify({ properties: $json.crm_request.contact.properties }) }}',
+    hubspotNode({
+      id: 'asset001-upsert-hubspot-contact',
+      name: 'Upsert HubSpot Contact',
+      position: [2080, 140],
+      parameters: {
+        resource: 'contact',
+        operation: 'upsert',
+        email: '={{ $json.contact_request.properties.email }}',
+        additionalFields: {
+          firstName:
+            '={{ $json.contact_request.properties.firstname ?? "" }}',
+          lastName:
+            '={{ $json.contact_request.properties.lastname ?? "" }}',
+          phoneNumber:
+            '={{ $json.contact_request.properties.phone ?? "" }}',
+          companyName:
+            '={{ $json.contact_request.properties.company ?? "" }}',
+          customPropertiesUi: {
+            customPropertiesValues: [
+              {
+                property: 'source',
+                value: '={{ $json.contact_request.properties.source }}',
+              },
+              {
+                property: 'consent_status',
+                value:
+                  '={{ $json.contact_request.properties.consent_status }}',
+              },
+              {
+                property: 'consent_timestamp',
+                value:
+                  '={{ $json.contact_request.properties.consent_timestamp }}',
+              },
+              {
+                property: 'last_enquiry_date',
+                value:
+                  '={{ $json.contact_request.properties.last_enquiry_date }}',
+              },
+            ],
+          },
+        },
+        options: {},
+      },
     }),
     hubspotHttpRequestNode({
       id: 'asset001-update-hubspot-contact',
       name: 'Update HubSpot Contact',
-      position: [1820, 300],
+      position: [2080, 300],
       method: 'PATCH',
       url:
-        '=https://api.hubapi.com/crm/v3/objects/contacts/{{ $json.crm_request.contact.contact_id }}',
+        '=https://api.hubapi.com/crm/v3/objects/contacts/{{ $json.contact_request.contact_id }}',
       body:
-        '={{ JSON.stringify({ properties: $json.crm_request.contact.properties }) }}',
+        '={{ JSON.stringify({ properties: $json.contact_request.properties }) }}',
     }),
     codeNode({
       id: 'asset001-attach-contact-response',
       name: 'Attach Contact Response',
-      position: [2080, 220],
+      position: [2340, 220],
       jsCode: attachHubspotContactResponseSource,
     }),
     {
@@ -1216,39 +1313,160 @@ const hubspotCrmWorkflow = {
       },
       type: 'n8n-nodes-base.if',
       typeVersion: 2.2,
-      position: [2340, 220],
+      position: [2600, 220],
       id: 'asset001-create-deal',
       name: 'Create Deal?',
     },
-    hubspotHttpRequestNode({
+    hubspotNode({
       id: 'asset001-create-hubspot-deal',
       name: 'Create HubSpot Deal',
-      position: [2600, 140],
-      method: 'POST',
-      url: 'https://api.hubapi.com/crm/v3/objects/deals',
-      body:
-        '={{ JSON.stringify({ properties: $json.crm_request.deal.create_properties }) }}',
+      position: [2860, 140],
+      parameters: {
+        resource: 'deal',
+        operation: 'create',
+        stage:
+          '={{ $json.deal_request.create_properties.dealstage }}',
+        additionalFields: {
+          dealName:
+            '={{ $json.deal_request.create_properties.dealname }}',
+          pipeline:
+            '={{ $json.deal_request.create_properties.pipeline }}',
+          associatedVids: '={{ [$json.contact_result.contact_id] }}',
+          customPropertiesUi: {
+            customPropertiesValues: [
+              {
+                property: 'service_category',
+                value:
+                  '={{ $json.deal_request.create_properties.service_category }}',
+              },
+              {
+                property: 'lead_score',
+                value:
+                  '={{ $json.deal_request.create_properties.lead_score ?? "" }}',
+              },
+              {
+                property: 'qualification_status',
+                value:
+                  '={{ $json.deal_request.create_properties.qualification_status }}',
+              },
+              {
+                property: 'urgency',
+                value:
+                  '={{ $json.deal_request.create_properties.urgency }}',
+              },
+              {
+                property: 'problem_summary',
+                value:
+                  '={{ $json.deal_request.create_properties.problem_summary }}',
+              },
+              {
+                property: 'ai_confidence',
+                value:
+                  '={{ $json.deal_request.create_properties.ai_confidence }}',
+              },
+              {
+                property: 'qualification_explanation',
+                value:
+                  '={{ $json.deal_request.create_properties.qualification_explanation }}',
+              },
+              {
+                property: 'workflow_correlation_id',
+                value:
+                  '={{ $json.deal_request.create_properties.workflow_correlation_id }}',
+              },
+              {
+                property: 'original_submission_reference',
+                value:
+                  '={{ $json.deal_request.create_properties.original_submission_reference }}',
+              },
+            ],
+          },
+        },
+      },
     }),
-    hubspotHttpRequestNode({
+    hubspotNode({
       id: 'asset001-update-hubspot-deal',
       name: 'Update HubSpot Deal',
-      position: [2600, 300],
-      method: 'PATCH',
-      url:
-        '=https://api.hubapi.com/crm/v3/objects/deals/{{ $json.deal_match.deal_id }}',
-      body:
-        '={{ JSON.stringify({ properties: $json.crm_request.deal.update_properties }) }}',
+      position: [2860, 300],
+      parameters: {
+        resource: 'deal',
+        operation: 'update',
+        dealId: {
+          __rl: true,
+          value: '={{ $json.deal_match.deal_id }}',
+          mode: 'id',
+        },
+        updateFields: {
+          dealName:
+            '={{ $json.deal_request.update_properties.dealname }}',
+          customPropertiesUi: {
+            customPropertiesValues: [
+              {
+                property: 'service_category',
+                value:
+                  '={{ $json.deal_request.update_properties.service_category }}',
+              },
+              {
+                property: 'lead_score',
+                value:
+                  '={{ $json.deal_request.update_properties.lead_score ?? "" }}',
+              },
+              {
+                property: 'qualification_status',
+                value:
+                  '={{ $json.deal_request.update_properties.qualification_status }}',
+              },
+              {
+                property: 'urgency',
+                value:
+                  '={{ $json.deal_request.update_properties.urgency }}',
+              },
+              {
+                property: 'problem_summary',
+                value:
+                  '={{ $json.deal_request.update_properties.problem_summary }}',
+              },
+              {
+                property: 'ai_confidence',
+                value:
+                  '={{ $json.deal_request.update_properties.ai_confidence }}',
+              },
+              {
+                property: 'qualification_explanation',
+                value:
+                  '={{ $json.deal_request.update_properties.qualification_explanation }}',
+              },
+              {
+                property: 'workflow_correlation_id',
+                value:
+                  '={{ $json.deal_request.update_properties.workflow_correlation_id }}',
+              },
+              {
+                property: 'original_submission_reference',
+                value:
+                  '={{ $json.deal_request.update_properties.original_submission_reference }}',
+              },
+            ],
+          },
+        },
+      },
     }),
     codeNode({
       id: 'asset001-attach-deal-response',
       name: 'Attach Deal Response',
-      position: [2860, 220],
+      position: [3120, 220],
       jsCode: attachHubspotDealResponseSource,
+    }),
+    booleanIfNode({
+      id: 'asset001-associate-existing-deal',
+      name: 'Associate Existing Deal?',
+      position: [3380, 220],
+      leftValue: "={{ $json.deal_result.action === 'update' }}",
     }),
     hubspotHttpRequestNode({
       id: 'asset001-associate-contact-deal',
       name: 'Associate Contact and Deal',
-      position: [3120, 220],
+      position: [3640, 140],
       method: 'PUT',
       url:
         '=https://api.hubapi.com/crm/v4/objects/deals/{{ $json.deal_result.deal_id }}/associations/default/contacts/{{ $json.contact_result.contact_id }}',
@@ -1256,7 +1474,7 @@ const hubspotCrmWorkflow = {
     codeNode({
       id: 'asset001-prepare-hubspot-crm-response',
       name: 'Prepare HubSpot CRM Response',
-      position: [3380, 220],
+      position: [3900, 220],
       jsCode: prepareHubspotCrmResponseSource,
     }),
     codeNode({
@@ -1269,9 +1487,9 @@ const hubspotCrmWorkflow = {
   pinData: {},
   connections: {
     'When Executed by Another Workflow': {
-      main: [[{ node: 'Build HubSpot CRM Request', type: 'main', index: 0 }]],
+      main: [[{ node: 'Build HubSpot Deal Request', type: 'main', index: 0 }]],
     },
-    'Build HubSpot CRM Request': {
+    'Build HubSpot Deal Request': {
       main: [[{ node: 'Search Existing Deal', type: 'main', index: 0 }]],
     },
     'Search Existing Deal': {
@@ -1282,17 +1500,20 @@ const hubspotCrmWorkflow = {
     },
     'Can Write CRM?': {
       main: [
-        [{ node: 'Create Contact?', type: 'main', index: 0 }],
+        [{ node: 'Build HubSpot Contact Request', type: 'main', index: 0 }],
         [{ node: 'Prepare Deal Review', type: 'main', index: 0 }],
       ],
     },
-    'Create Contact?': {
+    'Build HubSpot Contact Request': {
+      main: [[{ node: 'Use Contact Upsert?', type: 'main', index: 0 }]],
+    },
+    'Use Contact Upsert?': {
       main: [
-        [{ node: 'Create HubSpot Contact', type: 'main', index: 0 }],
+        [{ node: 'Upsert HubSpot Contact', type: 'main', index: 0 }],
         [{ node: 'Update HubSpot Contact', type: 'main', index: 0 }],
       ],
     },
-    'Create HubSpot Contact': {
+    'Upsert HubSpot Contact': {
       main: [[{ node: 'Attach Contact Response', type: 'main', index: 0 }]],
     },
     'Update HubSpot Contact': {
@@ -1314,7 +1535,13 @@ const hubspotCrmWorkflow = {
       main: [[{ node: 'Attach Deal Response', type: 'main', index: 0 }]],
     },
     'Attach Deal Response': {
-      main: [[{ node: 'Associate Contact and Deal', type: 'main', index: 0 }]],
+      main: [[{ node: 'Associate Existing Deal?', type: 'main', index: 0 }]],
+    },
+    'Associate Existing Deal?': {
+      main: [
+        [{ node: 'Associate Contact and Deal', type: 'main', index: 0 }],
+        [{ node: 'Prepare HubSpot CRM Response', type: 'main', index: 0 }],
+      ],
     },
     'Associate Contact and Deal': {
       main: [[{ node: 'Prepare HubSpot CRM Response', type: 'main', index: 0 }]],

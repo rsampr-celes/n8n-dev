@@ -36,21 +36,10 @@ function boundedText(value, fallback, maximumLength = 500) {
 }
 
 const lead = requireObject(context.lead, 'lead');
-const crmMatch = requireObject(context.crm_match, 'crm_match');
 const aiResult = requireObject(context.ai_result, 'ai_result');
-const crmAction = requireText(context.crm_action, 'crm_action');
 const correlationId = requireText(context.correlation_id, 'correlation_id');
-const receivedAt = optionalText(context.received_at) ?? new Date().toISOString();
 const submissionReference =
   optionalText(context.submission_reference) ?? correlationId;
-
-if (!['create', 'update'].includes(crmAction)) {
-  throw new Error(`Unsupported crm_action: ${crmAction}`);
-}
-if (crmAction === 'update' && !optionalText(crmMatch.contact_id)) {
-  throw new Error('crm_match.contact_id is required for a contact update');
-}
-
 const ai = aiResult.ai_response ?? {};
 const decision =
   aiResult.deterministic_decision ??
@@ -72,8 +61,7 @@ if (!finalRoute) {
 
 const requestedService = optionalText(lead.service_requested);
 const serviceCategory =
-  optionalText(ai.service_category) &&
-  ai.service_category !== 'unknown'
+  optionalText(ai.service_category) && ai.service_category !== 'unknown'
     ? ai.service_category
     : requestedService ?? 'other';
 const companyOrContact =
@@ -84,23 +72,6 @@ const companyOrContact =
       .join(' '),
   ) ??
   requireText(lead.email_normalized, 'lead.email_normalized');
-const contactEmail = requireText(
-  lead.email_normalized,
-  'lead.email_normalized',
-).toLowerCase();
-
-const contactProperties = compactProperties({
-  firstname: optionalText(lead.first_name),
-  lastname: optionalText(lead.last_name),
-  email: contactEmail,
-  phone: optionalText(lead.phone_normalized),
-  company: optionalText(lead.company),
-  source: optionalText(context.source) ?? 'portfolio_demo',
-  consent_status: String(lead.consent === true),
-  consent_timestamp: receivedAt,
-  last_enquiry_date: receivedAt,
-});
-
 const qualificationExplanation = isReviewOutcome
   ? `Human review required: ${routeReason}`
   : boundedText(
@@ -132,12 +103,7 @@ const dealQualificationProperties = compactProperties({
 
 return [{
   json: {
-    contact: {
-      action: crmAction,
-      contact_id: optionalText(crmMatch.contact_id),
-      properties: contactProperties,
-    },
-    deal: {
+    deal_request: {
       search_request: {
         filterGroups: [{
           filters: [{

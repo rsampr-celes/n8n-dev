@@ -34,10 +34,15 @@ function findNode(workflow, name) {
   return node;
 }
 
-const buildRequest = new Function(
+const buildDealRequest = new Function(
   '$input',
   '$',
-  findNode(crmWorkflow, 'Build HubSpot CRM Request').parameters.jsCode,
+  findNode(crmWorkflow, 'Build HubSpot Deal Request').parameters.jsCode,
+);
+const buildContactRequest = new Function(
+  '$input',
+  '$',
+  findNode(crmWorkflow, 'Build HubSpot Contact Request').parameters.jsCode,
 );
 const evaluateDealSearch = new Function(
   '$input',
@@ -115,9 +120,26 @@ function workflowContext(overrides = {}) {
   };
 }
 
-function executeBuild(context = workflowContext()) {
-  return buildRequest(
+function executeDealBuild(context = workflowContext()) {
+  return buildDealRequest(
     { all: () => [{ json: {} }] },
+    (nodeName) => {
+      assert.equal(nodeName, 'When Executed by Another Workflow');
+      return { first: () => ({ json: context }) };
+    },
+  )[0].json;
+}
+
+function executeContactBuild(
+  context = workflowContext(),
+  dealDecision = {
+    ...executeDealBuild(context),
+    deal_match: { action: 'create', deal_id: null },
+    should_write: true,
+  },
+) {
+  return buildContactRequest(
+    { first: () => ({ json: dealDecision }) },
     (nodeName) => {
       assert.equal(nodeName, 'When Executed by Another Workflow');
       return { first: () => ({ json: context }) };
@@ -176,11 +198,13 @@ test('child workflow exposes the same typed request contract as its parent call'
   );
 });
 
-test('build request maps contact and deal properties without carrying unrelated data', () => {
-  const result = executeBuild();
+test('separate builders map contact and deal properties without a combined CRM request', () => {
+  const dealResult = executeDealBuild();
+  const contactResult = executeContactBuild();
 
-  assert.deepEqual(result.contact, {
+  assert.deepEqual(contactResult.contact_request, {
     action: 'create',
+    write_mode: 'upsert_by_email',
     contact_id: null,
     properties: {
       firstname: 'Jane',
@@ -194,7 +218,7 @@ test('build request maps contact and deal properties without carrying unrelated 
       last_enquiry_date: '2026-07-30T12:00:00.000Z',
     },
   });
-  assert.deepEqual(result.deal.create_properties, {
+  assert.deepEqual(dealResult.deal_request.create_properties, {
     dealname: 'Northwind Services - api_integration',
     service_category: 'api_integration',
     lead_score: '95',
@@ -212,29 +236,37 @@ test('build request maps contact and deal properties without carrying unrelated 
     dealstage: 'appointmentscheduled',
   });
   assert.equal(
-    Object.hasOwn(result.deal.update_properties, 'pipeline'),
+    Object.hasOwn(dealResult.deal_request.update_properties, 'pipeline'),
     false,
   );
   assert.deepEqual(
-    result.deal.search_request.filterGroups[0].filters[0],
+    dealResult.deal_request.search_request.filterGroups[0].filters[0],
     {
       propertyName: 'workflow_correlation_id',
       operator: 'EQ',
       value: 'd4ba95e6-9d6f-4d57-b836-40b5e125d17d',
     },
   );
-  assert.deepEqual(Object.keys(result), [
-    'contact',
-    'deal',
+  assert.deepEqual(Object.keys(dealResult), [
+    'deal_request',
     'correlation_id',
   ]);
+  assert.deepEqual(Object.keys(contactResult), [
+    'contact_request',
+    'deal_request',
+    'deal_match',
+    'correlation_id',
+  ]);
+  assert.equal(Object.hasOwn(dealResult, 'contact_request'), false);
+  assert.equal(Object.hasOwn(contactResult, 'crm_request'), false);
 });
 
 test('update request requires and retains the matched contact ID', () => {
-  const result = executeBuild(workflowContext({
+  const result = executeContactBuild(workflowContext({
     crm_action: 'update',
     crm_match: {
       decision: 'update',
+      matched_by: 'phone',
       contact_id: '420574139611',
     },
     lead: {
@@ -244,14 +276,37 @@ test('update request requires and retains the matched contact ID', () => {
     },
   }));
 
-  assert.equal(result.contact.action, 'update');
-  assert.equal(result.contact.contact_id, '420574139611');
-  assert.equal(Object.hasOwn(result.contact.properties, 'phone'), false);
-  assert.equal(Object.hasOwn(result.contact.properties, 'company'), false);
+  assert.equal(result.contact_request.action, 'update');
+  assert.equal(result.contact_request.write_mode, 'update_by_id');
+  assert.equal(result.contact_request.contact_id, '420574139611');
+  assert.equal(Object.hasOwn(result.contact_request.properties, 'phone'), false);
+  assert.equal(Object.hasOwn(result.contact_request.properties, 'company'), false);
+});
+
+test('email-matched updates use the prebuilt HubSpot contact upsert', () => {
+  const result = executeContactBuild(workflowContext({
+    crm_action: 'update',
+    crm_match: {
+      decision: 'update',
+      matched_by: 'email',
+      contact_id: '420574139611',
+    },
+  }));
+
+  assert.equal(result.contact_request.action, 'update');
+  assert.equal(result.contact_request.write_mode, 'upsert_by_email');
+  assert.equal(
+    crmWorkflow.connections['Use Contact Upsert?'].main[0][0].node,
+    'Upsert HubSpot Contact',
+  );
+  assert.equal(
+    crmWorkflow.connections['Use Contact Upsert?'].main[1][0].node,
+    'Update HubSpot Contact',
+  );
 });
 
 test('invalid AI output still produces a human-review CRM request', () => {
-  const result = executeBuild(workflowContext({
+  const result = executeDealBuild(workflowContext({
     ai_result: {
       review_outcome: {
         final_score: null,
@@ -261,26 +316,26 @@ test('invalid AI output still produces a human-review CRM request', () => {
     },
   }));
 
-  assert.equal(result.deal.create_properties.qualification_status, 'human_review');
-  assert.equal(result.deal.create_properties.urgency, 'unknown');
-  assert.equal(result.deal.create_properties.ai_confidence, '0');
+  assert.equal(result.deal_request.create_properties.qualification_status, 'human_review');
+  assert.equal(result.deal_request.create_properties.urgency, 'unknown');
+  assert.equal(result.deal_request.create_properties.ai_confidence, '0');
   assert.equal(
-    result.deal.create_properties.problem_summary,
+    result.deal_request.create_properties.problem_summary,
     lead.message_sanitized,
   );
   assert.equal(
-    Object.hasOwn(result.deal.create_properties, 'lead_score'),
+    Object.hasOwn(result.deal_request.create_properties, 'lead_score'),
     false,
   );
 });
 
 test('deal search produces create, update, and review decisions', () => {
-  const crmRequest = executeBuild();
+  const dealRequest = executeDealBuild();
   const run = (results) => evaluateDealSearch(
-    { first: () => ({ json: { results } }) },
+    { all: () => results.map((result) => ({ json: result })) },
     (nodeName) => {
-      assert.equal(nodeName, 'Build HubSpot CRM Request');
-      return { first: () => ({ json: crmRequest }) };
+      assert.equal(nodeName, 'Build HubSpot Deal Request');
+      return { first: () => ({ json: dealRequest }) };
     },
   )[0].json;
 
@@ -301,24 +356,29 @@ test('deal search produces create, update, and review decisions', () => {
 });
 
 test('response handlers preserve only IDs, actions, and correlation data', () => {
-  const crmRequest = executeBuild();
+  const dealRequest = executeDealBuild();
   const decision = {
-    crm_request: crmRequest,
+    ...dealRequest,
     deal_match: {
       action: 'create',
       deal_id: null,
     },
     should_write: true,
   };
+  const requestContext = executeContactBuild(workflowContext(), decision);
   const contact = attachContactResponse(
-    { first: () => ({ json: { id: '20', properties: { email: 'x' } } }) },
+    { first: () => ({ json: { vid: '20', properties: { email: 'x' } } }) },
     (nodeName) => {
-      assert.equal(nodeName, 'Evaluate Deal Search');
-      return { first: () => ({ json: decision }) };
+      assert.equal(nodeName, 'Build HubSpot Contact Request');
+      return { first: () => ({ json: requestContext }) };
     },
   )[0].json;
   const deal = attachDealResponse(
-    { first: () => ({ json: { id: '30', properties: { dealname: 'x' } } }) },
+    {
+      first: () => ({
+        json: { dealId: '30', properties: { dealname: 'x' } },
+      }),
+    },
     (nodeName) => {
       assert.equal(nodeName, 'Attach Contact Response');
       return { first: () => ({ json: contact }) };
@@ -334,7 +394,7 @@ test('response handlers preserve only IDs, actions, and correlation data', () =>
 
   assert.deepEqual(response, {
     hubspot_write_success: true,
-    correlation_id: crmRequest.correlation_id,
+    correlation_id: dealRequest.correlation_id,
     contact: {
       action: 'create',
       contact_id: '20',
@@ -351,7 +411,7 @@ test('ambiguous deals return review without entering contact writes', () => {
   const response = prepareReview({
     first: () => ({
       json: {
-        crm_request: { correlation_id: 'correlation-1' },
+        correlation_id: 'correlation-1',
         deal_match: {
           candidate_deal_ids: ['30', '31'],
           review_reason: 'multiple_deals_for_correlation_id',
@@ -377,25 +437,31 @@ test('ambiguous deals return review without entering contact writes', () => {
   });
 });
 
-test('all HubSpot HTTP operations use the service key and transient retries', () => {
+test('prebuilt HubSpot nodes are used wherever they preserve safe behavior', () => {
+  const hubspotNodes = crmWorkflow.nodes.filter(
+    (node) => node.type === 'n8n-nodes-base.hubspot',
+  );
   const requestNodes = crmWorkflow.nodes.filter(
     (node) => node.type === 'n8n-nodes-base.httpRequest',
   );
 
   assert.deepEqual(
-    requestNodes.map((node) => node.name),
+    hubspotNodes.map((node) => node.name),
     [
       'Search Existing Deal',
-      'Create HubSpot Contact',
-      'Update HubSpot Contact',
+      'Upsert HubSpot Contact',
       'Create HubSpot Deal',
       'Update HubSpot Deal',
+    ],
+  );
+  assert.deepEqual(
+    requestNodes.map((node) => node.name),
+    [
+      'Update HubSpot Contact',
       'Associate Contact and Deal',
     ],
   );
-  for (const node of requestNodes) {
-    assert.equal(node.parameters.authentication, 'predefinedCredentialType');
-    assert.equal(node.parameters.nodeCredentialType, 'hubspotAppToken');
+  for (const node of [...hubspotNodes, ...requestNodes]) {
     assert.deepEqual(node.credentials.hubspotAppToken, {
       id: 'gNSXBziHeO44pSta',
       name: 'HubspotConnectionSK',
@@ -404,6 +470,28 @@ test('all HubSpot HTTP operations use the service key and transient retries', ()
     assert.equal(node.maxTries, 3);
     assert.equal(node.waitBetweenTries, 30000);
   }
+  for (const node of hubspotNodes) {
+    assert.equal(node.parameters.authentication, 'appToken');
+  }
+  for (const node of requestNodes) {
+    assert.equal(node.parameters.authentication, 'predefinedCredentialType');
+    assert.equal(node.parameters.nodeCredentialType, 'hubspotAppToken');
+  }
+  assert.equal(
+    findNode(crmWorkflow, 'Search Existing Deal')
+      .parameters.filterGroupsUi.filterGroupsValues[0]
+      .filtersUi.filterValues[0].propertyName,
+    'workflow_correlation_id|string',
+  );
+  assert.equal(
+    findNode(crmWorkflow, 'Create HubSpot Deal')
+      .parameters.additionalFields.associatedVids,
+    '={{ [$json.contact_result.contact_id] }}',
+  );
+  assert.equal(
+    crmWorkflow.connections['Associate Existing Deal?'].main[1][0].node,
+    'Prepare HubSpot CRM Response',
+  );
   assert.match(
     findNode(crmWorkflow, 'Associate Contact and Deal').parameters.url,
     /associations\/default\/contacts/,

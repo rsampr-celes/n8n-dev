@@ -1,9 +1,10 @@
-const decision = $('Evaluate Deal Search').first().json;
+const requestContext = $('Build HubSpot Contact Request').first().json;
 const response = $input.first()?.json ?? {};
 const contactId =
   response.id ??
+  response.vid ??
   response.properties?.hs_object_id ??
-  decision.crm_request.contact.contact_id ??
+  requestContext.contact_request.contact_id ??
   null;
 
 if (contactId === null || contactId === undefined || String(contactId).trim() === '') {
@@ -12,10 +13,12 @@ if (contactId === null || contactId === undefined || String(contactId).trim() ==
 
 return [{
   json: {
-    crm_request: decision.crm_request,
-    deal_match: decision.deal_match,
+    contact_request: requestContext.contact_request,
+    deal_request: requestContext.deal_request,
+    deal_match: requestContext.deal_match,
+    correlation_id: requestContext.correlation_id,
     contact_result: {
-      action: decision.crm_request.contact.action,
+      action: requestContext.contact_request.action,
       contact_id: String(contactId),
     },
   },

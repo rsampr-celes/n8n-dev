@@ -2,6 +2,7 @@ const contactContext = $('Attach Contact Response').first().json;
 const response = $input.first()?.json ?? {};
 const dealId =
   response.id ??
+  response.dealId ??
   response.properties?.hs_object_id ??
   contactContext.deal_match.deal_id ??
   null;
@@ -12,7 +13,7 @@ if (dealId === null || dealId === undefined || String(dealId).trim() === '') {
 
 return [{
   json: {
-    correlation_id: contactContext.crm_request.correlation_id,
+    correlation_id: contactContext.correlation_id,
     contact_result: contactContext.contact_result,
     deal_result: {
       action: contactContext.deal_match.action,

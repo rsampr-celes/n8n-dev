@@ -3,7 +3,7 @@ const decision = $input.first()?.json ?? {};
 return [{
   json: {
     hubspot_write_success: false,
-    correlation_id: decision.crm_request?.correlation_id ?? null,
+    correlation_id: decision.correlation_id ?? null,
     contact: null,
     deal: {
       action: 'review',

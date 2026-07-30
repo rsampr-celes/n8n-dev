@@ -88,9 +88,12 @@ qualification:
 - Builds minimal contact and deal request contracts before any API call.
 - Searches deals by `workflow_correlation_id` and chooses create, update, or
   review deterministically.
-- Creates or updates the matched contact, including contacts found by phone.
-- Creates or updates one deal and applies the final qualification fields.
-- Applies the default deal-to-contact association after both writes.
+- Uses the prebuilt HubSpot node for deal search, contact upsert, and deal
+  create/update.
+- Retains an ID-based HTTP update only for contacts matched by phone, because
+  the prebuilt contact operation upserts by email and could create a duplicate.
+- Associates new deals through the prebuilt deal node and uses the default
+  association endpoint only to repair or confirm an existing deal association.
 - Records an invalid AI outcome as a human-review deal with safe fallbacks.
 - Returns only write status, correlation ID, actions, and HubSpot record IDs.
 
@@ -138,10 +141,10 @@ The HubSpot workflow uses the n8n Service Key credential named
 `phone` property whenever contacts are created or updated so the exact-match
 fallback remains deterministic.
 
-The contact/deal child uses HubSpot CRM v3 object endpoints and the v4 default
-association endpoint with the same credential. The exported parent passes
-pipeline `default` and initial stage `appointmentscheduled`; update those two
-trusted inputs if the target account uses different IDs.
+The contact/deal child uses the prebuilt HubSpot node with the same service-key
+credential wherever the node supports the required operation. The exported
+parent passes pipeline `default` and initial stage `appointmentscheduled`;
+update those two trusted inputs if the target account uses different IDs.
 
 Create an n8n Data Table named `asset001_runtime_config` with these columns and
 row:
@@ -218,7 +221,8 @@ src/attach-ai-correction-response.js
 src/validate-ai-response.js
 src/calculate-deterministic-score.js
 src/prepare-ai-review-outcome.js
-src/build-hubspot-crm-request.js
+src/build-hubspot-contact-request.js
+src/build-hubspot-deal-request.js
 src/evaluate-deal-search-results.js
 src/attach-hubspot-contact-response.js
 src/attach-hubspot-deal-response.js

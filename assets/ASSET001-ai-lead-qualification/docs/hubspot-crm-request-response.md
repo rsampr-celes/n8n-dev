@@ -19,8 +19,11 @@ nodes; it does not merge or carry an accumulated item.
 | `hubspot_pipeline_id` | string | Trusted pipeline configuration |
 | `hubspot_dealstage_id` | string | Trusted initial-stage configuration |
 
-`Build HubSpot CRM Request` validates this contract and emits only `contact`,
-`deal`, and `correlation_id`.
+`Build HubSpot Deal Request` validates and prepares only the deal payload before
+the deal search. After the search result is safe to write, `Build HubSpot
+Contact Request` validates and prepares only the contact payload immediately
+before the contact operation. The flow keeps `deal_request` and
+`contact_request` separate; it does not construct a combined CRM request.
 
 ## Contact request
 
@@ -42,13 +45,14 @@ nodes; it does not merge or carry an accumulated item.
 }
 ```
 
-Blank optional values are omitted. An update requires the contact ID returned
-by the match workflow, including when the match was found by phone. This avoids
-an email-based upsert creating a second contact.
+Blank optional values are omitted. Creates and email-matched updates use the
+prebuilt HubSpot contact upsert. A phone-matched update uses the contact ID
+returned by the match workflow because the prebuilt contact operation only
+upserts by email; using it after an email miss could create a second contact.
 
 ## Deal request and idempotent update
 
-Before any write, the child searches deals by the immutable
+Before any write, the prebuilt HubSpot deal-search node searches by the immutable
 `workflow_correlation_id` and requests at most two results:
 
 - No deal: create.
@@ -61,8 +65,10 @@ output is still recorded as a human-review deal using deterministic fallbacks.
 
 ## Association
 
-After both records succeed, the child uses HubSpot's default deal-to-contact
-association endpoint. Repeating the association does not create a duplicate.
+The prebuilt deal-create node associates a new deal to the contact. For an
+existing deal, the child uses HubSpot's default deal-to-contact association
+endpoint after the update. Repeating that association does not create a
+duplicate.
 
 ## Success response
 
@@ -98,8 +104,9 @@ association endpoint. Repeating the association does not create a duplicate.
 }
 ```
 
-HTTP failures use three attempts with a 30-second wait and fail the subflow
-after the final attempt. Raw HubSpot records are not returned to the parent.
+All HubSpot and HTTP request nodes use three attempts with a 30-second wait and
+fail the subflow after the final attempt. Raw HubSpot records are not returned
+to the parent.
 
 ## Required HubSpot schema
 
