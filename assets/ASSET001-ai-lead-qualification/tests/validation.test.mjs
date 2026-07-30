@@ -26,9 +26,16 @@ const validInput = JSON.parse(
   fs.readFileSync(path.join(assetDirectory, 'examples', 'valid-lead.json'), 'utf8'),
 );
 
-const codeNode = workflow.nodes.find((node) => node.name === 'Normalize and Validate Lead');
-assert.ok(codeNode, 'Normalize and Validate Lead node is missing');
-const executeCodeNode = new Function('require', '$input', codeNode.parameters.jsCode);
+const normalizeNode = workflow.nodes.find((node) => node.name === 'Normalize Lead');
+assert.ok(normalizeNode, 'Normalize Lead node is missing');
+const executeNormalizeNode = new Function('require', '$input', normalizeNode.parameters.jsCode);
+const validateNode = workflow.nodes.find((node) => node.name === 'Validate Lead');
+assert.ok(validateNode, 'Validate Lead node is missing');
+const executeValidateNode = new Function('require', '$input', validateNode.parameters.jsCode);
+const useNormalizedInputNode = workflow.nodes.find(
+  (node) => node.name === 'Use Normalized Input',
+);
+assert.ok(useNormalizedInputNode, 'Use Normalized Input node is missing');
 const idempotencyNode = idempotencyWorkflow.nodes.find(
   (node) => node.name === 'Generate Idempotency Key',
 );
@@ -59,6 +66,7 @@ const applyIdempotencyConfigNode = idempotencyWorkflow.nodes.find(
 );
 assert.ok(applyIdempotencyConfigNode, 'Apply Idempotency Configuration node is missing');
 const executeApplyIdempotencyConfigNode = new Function(
+  'require',
   '$input',
   '$',
   applyIdempotencyConfigNode.parameters.jsCode,
@@ -78,13 +86,26 @@ function clone(value) {
   return structuredClone(value);
 }
 
-function run(raw) {
-  const output = executeCodeNode(runtimeRequire, { all: () => [{ json: raw }] });
+function normalize(raw) {
+  const output = executeNormalizeNode(runtimeRequire, { all: () => [{ json: raw }] });
+  assert.equal(output.length, 1);
+  return output[0].json;
+}
+
+function validate(normalized) {
+  const output = executeValidateNode(runtimeRequire, {
+    all: () => [{ json: normalized }],
+  });
   assert.equal(output.length, 1);
   for (const error of output[0].json.validation.errors) {
     assert.equal(validateError(error), true, JSON.stringify(validateError.errors));
   }
   return output[0].json;
+}
+
+function run(raw) {
+  const normalized = normalize(raw);
+  return { ...normalized, ...validate(normalized) };
 }
 
 function codes(result) {
@@ -99,6 +120,7 @@ function generateIdempotencyKey(payload) {
 
 function applyIdempotencyConfig(configRow, payload) {
   return executeApplyIdempotencyConfigNode(
+    runtimeRequire,
     { first: () => ({ json: configRow }) },
     (nodeName) => {
       assert.equal(nodeName, 'When Executed by Another Workflow');
@@ -134,7 +156,45 @@ test('V01 complete valid lead is normalized and valid', () => {
   assert.equal(result.lead.email_normalized, 'jane@example.test');
   assert.equal(result.lead.phone_normalized, '+15550102000');
   assert.equal(result.lead.company_website, 'https://example.test/services');
-  assert.equal(result.context.schema_version, '2.0.0');
+});
+
+test('normalization and validation are separate workflow stages', () => {
+  const normalized = normalize(clone(validInput));
+  assert.deepEqual(Object.keys(normalized), ['lead']);
+  assert.equal(Object.hasOwn(normalized, 'validation'), false);
+
+  const validated = validate(normalized);
+  assert.equal(validated.validation.is_valid, true);
+  assert.deepEqual(Object.keys(validated), ['validation']);
+  assert.equal(Object.hasOwn(validated, 'lead'), false);
+});
+
+test('sub-workflow handoff contains only normalized input', () => {
+  const normalized = normalize(clone(validInput));
+  assert.deepEqual(Object.keys(normalized), ['lead']);
+  assert.equal(useNormalizedInputNode.type, 'n8n-nodes-base.merge');
+  assert.equal(useNormalizedInputNode.parameters.output, 'specifiedInput');
+  assert.equal(useNormalizedInputNode.parameters.useDataOfInput, 1);
+  assert.equal(
+    workflow.connections['Is Lead Valid?'].main[0][0].node,
+    'Use Normalized Input',
+  );
+  assert.equal(
+    workflow.connections['Is Lead Valid?'].main[0][0].index,
+    1,
+  );
+  assert.equal(
+    workflow.connections['Normalize Lead'].main[0][1].node,
+    'Use Normalized Input',
+  );
+  assert.equal(
+    workflow.connections['Normalize Lead'].main[0][1].index,
+    0,
+  );
+  assert.deepEqual(
+    workflow.connections['Use Normalized Input'].main[0].map(({ node }) => node),
+    ['Execute Idempotency Guard', 'Wait for Idempotency'],
+  );
 });
 
 test('V02 missing first name returns required', () => {
@@ -288,7 +348,7 @@ test('operational errors never copy submitted values', () => {
 });
 
 test('I01 idempotency key uses the documented normalized source', () => {
-  const normalized = run({
+  const normalized = normalize({
     ...clone(validInput),
     submission_reference: ' FORM-001 ',
   });
@@ -300,27 +360,27 @@ test('I01 idempotency key uses the documented normalized source', () => {
 
   assert.equal(
     result.idempotency_key,
-    '5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e',
+    'ff2aa5825134022d89acdb8c1db98d8391e4ae8e156f5dcbe2afa146784d4763',
   );
 });
 
 test('I02 repeated normalized submission produces the same key', () => {
   const first = generateIdempotencyKey(
-    applyIdempotencyConfig({}, run(clone(validInput))),
+    applyIdempotencyConfig({}, normalize(clone(validInput))),
   );
   const second = generateIdempotencyKey(
-    applyIdempotencyConfig({}, run(clone(validInput))),
+    applyIdempotencyConfig({}, normalize(clone(validInput))),
   );
 
   assert.equal(first.idempotency_key, second.idempotency_key);
   assert.match(first.idempotency_key, /^[0-9a-f]{64}$/);
 });
 
-test('I03 submission reference separates otherwise identical submissions', () => {
-  const first = run({ ...clone(validInput), submission_reference: 'FORM-001' });
-  const second = run({ ...clone(validInput), submission_reference: 'FORM-002' });
+test('I03 form metadata does not alter normalized idempotency input', () => {
+  const first = normalize({ ...clone(validInput), submission_reference: 'FORM-001' });
+  const second = normalize({ ...clone(validInput), submission_reference: 'FORM-002' });
 
-  assert.notEqual(
+  assert.equal(
     generateIdempotencyKey(applyIdempotencyConfig({}, first)).idempotency_key,
     generateIdempotencyKey(applyIdempotencyConfig({}, second)).idempotency_key,
   );
@@ -353,7 +413,7 @@ test('I04 claim happens before qualification and handles every stored state', ()
     false,
   );
   assert.equal(
-    workflow.connections['Is Lead Valid?'].main[0][0].node,
+    workflow.connections['Use Normalized Input'].main[0][0].node,
     'Execute Idempotency Guard',
   );
   assert.equal(idempotencyWorkflow.settings.callerPolicy, 'workflowsFromAList');
@@ -391,7 +451,7 @@ test('I05 Data Table configuration is contained in the sub-workflow', () => {
 });
 
 test('I06 Data Table false bypasses idempotency and continues', () => {
-  const payload = run(clone(validInput));
+  const payload = normalize(clone(validInput));
   const configured = applyIdempotencyConfig({
     key: 'idempotency_enabled',
     enabled: false,
@@ -411,7 +471,7 @@ test('I06 Data Table false bypasses idempotency and continues', () => {
 });
 
 test('I07 missing Data Table row fails safe with idempotency enabled', () => {
-  const payload = run(clone(validInput));
+  const payload = normalize(clone(validInput));
   const configured = applyIdempotencyConfig({}, payload);
 
   assert.equal(configured.idempotency_enabled, true);
@@ -463,7 +523,7 @@ test('I08 sub-workflow maps every stored state to a parent decision', () => {
 });
 
 test('I09 each idempotency stage emits only its explicit contract', () => {
-  const normalized = run({
+  const normalized = normalize({
     ...clone(validInput),
     submission_reference: 'FORM-001',
   });
@@ -477,8 +537,8 @@ test('I09 each idempotency stage emits only its explicit contract', () => {
     'email_normalized',
     'idempotency_enabled',
     'phone_normalized',
-    'submission_reference',
   ]);
+  assert.match(configured.correlation_id, /^[0-9a-f-]{36}$/);
 
   const keyed = generateIdempotencyKey(configured);
   assert.deepEqual(Object.keys(keyed).sort(), [

@@ -1,3 +1,5 @@
+const { randomUUID } = require('crypto');
+
 const configRow = $input.first()?.json ?? {};
 const workflowInput = $('When Executed by Another Workflow').first().json;
 const rowFound = configRow.key === 'idempotency_enabled';
@@ -7,10 +9,9 @@ const enabled = rowFound ? configRow.enabled !== false : true;
 
 return [{
   json: {
-    correlation_id: workflowInput.context.correlation_id,
+    correlation_id: randomUUID(),
     email_normalized: workflowInput.lead.email_normalized,
     phone_normalized: workflowInput.lead.phone_normalized ?? null,
-    submission_reference: workflowInput.context.submission_reference ?? null,
     idempotency_enabled: enabled,
   },
 }];

@@ -19,10 +19,12 @@ const hubspotMatchWorkflowPath = path.join(
 );
 const schemaPath = path.join(assetDirectory, 'schemas', 'lead-submission.schema.json');
 const sourceDirectory = path.join(assetDirectory, 'src');
-const validationSourcePath = path.join(sourceDirectory, 'normalize-and-validate.js');
+const normalizationSourcePath = path.join(sourceDirectory, 'normalize-lead.js');
+const validationSourcePath = path.join(sourceDirectory, 'validate-lead.js');
 
 const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
 const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+const normalizationSource = fs.readFileSync(normalizationSourcePath, 'utf8');
 const validationSource = fs.readFileSync(validationSourcePath, 'utf8');
 const idempotencySource = fs.readFileSync(
   path.join(sourceDirectory, 'generate-idempotency-key.js'),
@@ -184,6 +186,9 @@ function noOpNode({ id, name, position }) {
 
 const managedNodeIds = new Set([
   'asset001-normalize-validate',
+  'asset001-normalize',
+  'asset001-validate',
+  'asset001-use-normalized-input',
   'asset001-is-valid',
   'asset001-valid-placeholder',
   'asset001-invalid-placeholder',
@@ -213,17 +218,37 @@ const managedNodeIds = new Set([
 workflow.nodes = workflow.nodes.filter((node) => !managedNodeIds.has(node.id));
 workflow.nodes.push(
   codeNode({
-    id: 'asset001-normalize-validate',
-    name: 'Normalize and Validate Lead',
+    id: 'asset001-normalize',
+    name: 'Normalize Lead',
     position: [520, 300],
+    jsCode: normalizationSource,
+  }),
+  codeNode({
+    id: 'asset001-validate',
+    name: 'Validate Lead',
+    position: [780, 300],
     jsCode: validationCode,
   }),
   booleanIfNode({
     id: 'asset001-is-valid',
     name: 'Is Lead Valid?',
-    position: [780, 300],
+    position: [1040, 300],
     leftValue: '={{ $json.validation.is_valid }}',
   }),
+  {
+    parameters: {
+      mode: 'chooseBranch',
+      numberInputs: 2,
+      chooseBranchMode: 'waitForAll',
+      output: 'specifiedInput',
+      useDataOfInput: 1,
+    },
+    type: 'n8n-nodes-base.merge',
+    typeVersion: 3.2,
+    position: [1300, 220],
+    id: 'asset001-use-normalized-input',
+    name: 'Use Normalized Input',
+  },
   {
     parameters: {
       source: 'database',
@@ -247,14 +272,14 @@ workflow.nodes.push(
     },
     type: 'n8n-nodes-base.executeWorkflow',
     typeVersion: 1.3,
-    position: [1040, 220],
+    position: [1560, 220],
     id: 'asset001-execute-idempotency-subflow',
     name: 'Execute Idempotency Guard',
   },
   booleanIfNode({
     id: 'asset001-should-continue',
     name: 'Continue After Idempotency?',
-    position: [1300, 220],
+    position: [1820, 220],
     leftValue: '={{ $json.idempotency.should_continue }}',
   }),
   {
@@ -267,7 +292,7 @@ workflow.nodes.push(
     },
     type: 'n8n-nodes-base.merge',
     typeVersion: 3.2,
-    position: [1560, 140],
+    position: [2080, 140],
     id: 'asset001-wait-for-idempotency',
     name: 'Wait for Idempotency',
   },
@@ -294,42 +319,51 @@ workflow.nodes.push(
     },
     type: 'n8n-nodes-base.executeWorkflow',
     typeVersion: 1.3,
-    position: [1820, 140],
+    position: [2340, 140],
     id: 'asset001-execute-hubspot-match-subflow',
     name: 'Execute HubSpot Contact Match',
   },
   noOpNode({
     id: 'asset001-valid-placeholder',
     name: 'Continue Qualification',
-    position: [2080, 140],
+    position: [2600, 140],
   }),
   noOpNode({
     id: 'asset001-duplicate-handled',
     name: 'Duplicate Submission Handled',
-    position: [1560, 300],
+    position: [2080, 300],
   }),
   noOpNode({
     id: 'asset001-invalid-placeholder',
     name: 'Record Validation Failure',
-    position: [1040, 380],
+    position: [1300, 380],
   }),
 );
 
 workflow.connections = {
   'Website Lead Form': {
-    main: [[{ node: 'Normalize and Validate Lead', type: 'main', index: 0 }]],
+    main: [[{ node: 'Normalize Lead', type: 'main', index: 0 }]],
   },
-  'Normalize and Validate Lead': {
+  'Normalize Lead': {
+    main: [[
+      { node: 'Validate Lead', type: 'main', index: 0 },
+      { node: 'Use Normalized Input', type: 'main', index: 0 },
+    ]],
+  },
+  'Validate Lead': {
     main: [[{ node: 'Is Lead Valid?', type: 'main', index: 0 }]],
   },
   'Is Lead Valid?': {
     main: [
-      [
-        { node: 'Execute Idempotency Guard', type: 'main', index: 0 },
-        { node: 'Wait for Idempotency', type: 'main', index: 0 },
-      ],
+      [{ node: 'Use Normalized Input', type: 'main', index: 1 }],
       [{ node: 'Record Validation Failure', type: 'main', index: 0 }],
     ],
+  },
+  'Use Normalized Input': {
+    main: [[
+      { node: 'Execute Idempotency Guard', type: 'main', index: 0 },
+      { node: 'Wait for Idempotency', type: 'main', index: 0 },
+    ]],
   },
   'Execute Idempotency Guard': {
     main: [[{ node: 'Continue After Idempotency?', type: 'main', index: 0 }]],

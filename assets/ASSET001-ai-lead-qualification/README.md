@@ -13,20 +13,23 @@ The workflow captures:
 - Estimated budget and expected timeline
 - Required consent
 
-The form feeds a **Normalize and Validate Lead** Code node. Native JavaScript
-normalizes submitted values, Ajv validates the canonical object against the
-versioned JSON Schema, and an IF node routes valid and invalid leads separately.
+The form feeds separate **Normalize Lead** and **Validate Lead** Code nodes.
+Native JavaScript first produces only `{ lead }`. Ajv then validates that lead
+and produces only `{ validation }`. An IF node routes valid and invalid leads
+separately.
 
 Valid leads now pass through a configurable idempotency sub-workflow before
 qualification:
 
+- **Use Normalized Input** waits for a successful validation signal, then emits
+  the original `{ lead }` normalization branch unchanged.
 - **Execute Idempotency Guard** calls `ASSET001 - Idempotency Guard`.
 - The sub-workflow reads the `idempotency_enabled` row from the
   `asset001_runtime_config` n8n Data Table.
 - Only an explicit Boolean `false` disables idempotency. A missing or malformed
   configuration row fails safe with idempotency enabled.
-- The sub-workflow hashes normalized email, phone, and the optional
-  form-generated submission reference, claims the key in PostgreSQL, and maps
+- The sub-workflow hashes normalized email and phone, creates its operational
+  correlation ID, claims the key in PostgreSQL, and maps
   `claimed`, `completed`, `processing`, and `failed` states to a stable outcome.
 - When disabled, **Bypass Idempotency** marks the guard as bypassed and allows
   qualification to continue without a database write.
@@ -146,10 +149,10 @@ to overwrite the existing workflow.
 ```text
 schemas/lead-submission.schema.json
 schemas/validation-error.schema.json
-src/normalize-and-validate.js
+src/normalize-lead.js
+src/validate-lead.js
 src/apply-idempotency-config.js
 src/generate-idempotency-key.js
-src/restore-idempotency-context.js
 src/finalize-idempotency-result.js
 src/bypass-idempotency.js
 src/evaluate-email-results.js

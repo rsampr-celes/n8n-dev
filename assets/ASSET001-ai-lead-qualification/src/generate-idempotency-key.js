@@ -9,8 +9,7 @@ return $input.all().map((item, index) => {
   const payload = item.json;
   const email = stableValue(payload.email_normalized).toLowerCase();
   const phone = stableValue(payload.phone_normalized);
-  const submissionReference = stableValue(payload.submission_reference);
-  const source = `${email}|${phone}|${submissionReference}`;
+  const source = `${email}|${phone}`;
   const key = createHash('sha256').update(source, 'utf8').digest('hex');
 
   return {

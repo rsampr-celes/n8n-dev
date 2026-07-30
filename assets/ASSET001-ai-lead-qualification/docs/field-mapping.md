@@ -4,14 +4,15 @@ This mapping reflects the current implementation in:
 
 - `workflows/ASSET001-website-lead-form.json`
 - `workflows/ASSET001-idempotency-guard.json`
-- `src/normalize-and-validate.js`
+- `src/normalize-lead.js`
+- `src/validate-lead.js`
 - `src/generate-idempotency-key.js`
 - `schemas/lead-submission.schema.json`
 
 Each processing stage emits an explicit contract. A stage does not carry the
 complete preceding payload unless every field is required by the next stage.
 
-## FormItem → Validate & Normalize
+## FormItem → Normalize Lead → Validate Lead
 
 | FormItem | Form label | Type | Required | Normalized output | Normalize rule | Blank handling | Schema validation |
 |---|---|---|---:|---|---|---|---|
@@ -50,23 +51,21 @@ complete preceding payload unless every field is required by the next stage.
 
 ## Normalized fields → Idempotency sub-workflow
 
-The complete canonical normalization result is sent to the sub-workflow. Its
+The complete `{ lead }` normalization result is sent to the sub-workflow. Its
 first Code stage extracts only the following fields:
 
-| Normalized/context field | Retained after configuration | Stage field | Handling |
+| Normalized field | Retained after configuration | Stage field | Handling |
 |---|---:|---|---|
-| `context.correlation_id` | Yes | `correlation_id` | Required by the database claim. |
 | `lead.email_normalized` | Yes | `email_normalized` | Key component 1; trim and lowercase again. |
 | `lead.phone_normalized` | Yes | `phone_normalized` | Key component 2; `null` becomes an empty string. |
-| `context.submission_reference` | Yes | `submission_reference` | Key component 3; `null` becomes an empty string. |
-| All other `context`, `lead`, and `validation` fields | No | — | Removed at the idempotency boundary. |
+| — | Generated | `correlation_id` | Created inside the idempotency sub-workflow. |
+| All other `lead` fields | No | — | Removed at the idempotency boundary. |
 
 The key is:
 
 ```text
 SHA-256(lowercase(trim(email_normalized)) + "|" +
-        trim(phone_normalized) + "|" +
-        trim(submission_reference))
+        trim(phone_normalized))
 ```
 
 ## Source and destination JSON by stage
@@ -74,11 +73,7 @@ SHA-256(lowercase(trim(email_normalized)) + "|" +
 Examples show the contents of each n8n item's `json` property. The outer n8n
 item wrapper is omitted.
 
-### 1. Website Lead Form → Normalize and Validate Lead
-
-The example includes optional raw `submission_reference` to demonstrate the
-third key component. It is accepted by the normalization code but is not a
-visible Website Lead Form item.
+### 1. Website Lead Form → Normalize Lead
 
 Source:
 
@@ -97,8 +92,7 @@ Source:
   "country": " United   States ",
   "consent": [
     "I consent to the processing of this demonstration enquiry"
-  ],
-  "submission_reference": " FORM-001 "
+  ]
 }
 ```
 
@@ -106,14 +100,6 @@ Destination:
 
 ```json
 {
-  "context": {
-    "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-    "received_at": "2026-07-28T19:30:00.000Z",
-    "submission_reference": "FORM-001",
-    "source": "n8n_form",
-    "schema": "lead-submission",
-    "schema_version": "2.0.0"
-  },
   "lead": {
     "phone_normalized": "+15550102000",
     "company": "Northwind Services",
@@ -127,14 +113,14 @@ Destination:
     "email_normalized": "jane@example.test",
     "message_sanitized": "Connect our website leads with HubSpot.",
     "consent": true
-  },
-  "validation": {
-    "is_valid": true,
-    "errors": [],
-    "warnings": []
   }
 }
 ```
+
+**Validate Lead** emits a separate `{ validation }` result for **Is Lead
+Valid?** without carrying `lead`. On the valid branch, **Use Normalized Input**
+waits for that signal and emits only the original `{ lead }` branch shown
+above. Consequently, neither sub-workflow receives `validation`.
 
 ### 2. Execute Idempotency Guard → Apply Idempotency Configuration
 
@@ -143,14 +129,6 @@ Sources:
 ```json
 {
   "workflow_request": {
-    "context": {
-      "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-      "received_at": "2026-07-28T19:30:00.000Z",
-      "submission_reference": "FORM-001",
-      "source": "n8n_form",
-      "schema": "lead-submission",
-      "schema_version": "2.0.0"
-    },
     "lead": {
       "phone_normalized": "+15550102000",
       "company": "Northwind Services",
@@ -164,11 +142,6 @@ Sources:
       "email_normalized": "jane@example.test",
       "message_sanitized": "Connect our website leads with HubSpot.",
       "consent": true
-    },
-    "validation": {
-      "is_valid": true,
-      "errors": [],
-      "warnings": []
     }
   },
   "data_table_row": {
@@ -185,7 +158,6 @@ Destination:
   "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
   "email_normalized": "jane@example.test",
   "phone_normalized": "+15550102000",
-  "submission_reference": "FORM-001",
   "idempotency_enabled": true
 }
 ```
@@ -203,11 +175,11 @@ Destination:
 ```json
 {
   "correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
-  "idempotency_key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e"
+  "idempotency_key": "ff2aa5825134022d89acdb8c1db98d8391e4ae8e156f5dcbe2afa146784d4763"
 }
 ```
 
-The three key components and configuration flag are discarded after the hash
+The two key components and configuration flag are discarded after the hash
 is generated.
 
 ### 4. Claim Idempotency Key
@@ -220,7 +192,7 @@ Destination for a newly claimed key:
 ```json
 {
   "claim_action": "claimed",
-  "idempotency_key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e",
+  "idempotency_key": "ff2aa5825134022d89acdb8c1db98d8391e4ae8e156f5dcbe2afa146784d4763",
   "stored_correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
   "stored_status": "processing",
   "previous_result": null,
@@ -246,7 +218,7 @@ Destination:
 {
   "idempotency": {
     "enabled": true,
-    "key": "5c50517d4589f9e8d0c00f123b7b5f38860c8e7ef521dd63ab08fe6ccfd4666e",
+    "key": "ff2aa5825134022d89acdb8c1db98d8391e4ae8e156f5dcbe2afa146784d4763",
     "claim_action": "claimed",
     "stored_correlation_id": "d4ba95e6-9d6f-4d57-b836-40b5e125d17d",
     "stored_status": "processing",

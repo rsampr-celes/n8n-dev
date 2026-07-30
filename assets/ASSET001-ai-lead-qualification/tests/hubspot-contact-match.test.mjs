@@ -41,9 +41,6 @@ const produceDecision = new Function(
 );
 
 const normalizedInput = {
-  context: {
-    correlation_id: '550e8400-e29b-41d4-a716-446655440000',
-  },
   lead: {
     email_normalized: 'jane@example.test',
     phone_normalized: '+15550102000',
@@ -113,14 +110,18 @@ test('main workflow calls contact matching after a new idempotency claim', () =>
   assert.ok(executeNode);
   assert.equal(
     mainWorkflow.connections['Is Lead Valid?'].main[0][0].node,
+    'Use Normalized Input',
+  );
+  assert.equal(
+    mainWorkflow.connections['Use Normalized Input'].main[0][0].node,
     'Execute Idempotency Guard',
   );
   assert.equal(
-    mainWorkflow.connections['Is Lead Valid?'].main[0][1].node,
+    mainWorkflow.connections['Use Normalized Input'].main[0][1].node,
     'Wait for Idempotency',
   );
   assert.equal(
-    mainWorkflow.connections['Is Lead Valid?'].main[0][1].index,
+    mainWorkflow.connections['Use Normalized Input'].main[0][1].index,
     0,
   );
   assert.equal(
