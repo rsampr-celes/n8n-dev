@@ -14,9 +14,9 @@ The workflow captures:
 - Required consent
 
 The form feeds separate **Normalize Lead** and **Validate Lead** Code nodes.
-Native JavaScript first produces only `{ lead }`. Ajv then validates that lead
-and produces only `{ validation }`. An IF node routes valid and invalid leads
-separately.
+Native JavaScript first produces only `{ lead }`. A separate plain-JavaScript
+validator checks that lead and produces only `{ validation }`. An IF node
+routes valid and invalid leads separately.
 
 Valid leads now pass through a configurable idempotency sub-workflow before
 qualification:
@@ -123,23 +123,19 @@ The production form becomes available only after the workflow is activated.
 
 ## Build and test
 
-The repository build compiles the schema with Ajv standalone mode and embeds
-the generated validator in the workflow. This is necessary because n8n's Code
-runner blocks the dynamic code generation used by `Ajv.compile()`.
-
-The custom n8n image pins aliased Ajv runtime helpers without replacing n8n's
-own dependencies. Compose allowlists those aliases, plus Node's `crypto`
-module, for the JavaScript Code node.
+The repository build embeds the plain-JavaScript normalization and validation
+sources directly into the workflow. No external validation package or custom
+n8n image is required. The JSON Schema remains the documented canonical
+contract, while tests keep the JavaScript implementation aligned with it.
 
 ```powershell
 npm install
 npm test
-docker compose up -d --build
+docker compose up -d
 ```
 
-`npm test` regenerates the exported workflow by embedding
-`schemas/lead-submission.schema.json` into the Code node, then executes the
-V01–V20 contract suite against that embedded code.
+`npm test` regenerates the exported workflow from the JavaScript sources, then
+executes the V01–V20 contract suite against the embedded node code.
 
 If the workflow already exists in n8n, import the regenerated JSON and choose
 to overwrite the existing workflow.

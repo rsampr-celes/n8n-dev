@@ -53,13 +53,12 @@ function normalizePhone(value) {
 function normalizeUrl(value) {
   if (isBlank(value)) return null;
   const normalized = String(value).trim();
-  try {
-    const url = new URL(normalized);
-    url.hash = '';
-    return url.toString();
-  } catch {
-    return normalized;
-  }
+  const withoutFragment = normalized.split('#', 1)[0];
+  const match = withoutFragment.match(/^(https?):\/\/([^/?#]+)(.*)$/i);
+  if (!match) return normalized;
+
+  const [, protocol, authority, remainder] = match;
+  return `${protocol.toLowerCase()}://${authority.toLowerCase()}${remainder || '/'}`;
 }
 
 function normalizeMessage(value) {

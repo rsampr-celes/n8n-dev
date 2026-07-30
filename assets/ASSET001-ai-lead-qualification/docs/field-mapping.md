@@ -21,7 +21,7 @@ complete preceding payload unless every field is required by the next stage.
 | `email` | Work email | email | Yes | `lead.email_normalized` | Trim and lowercase. | Omit. | Required email string; maximum 254 characters. |
 | `phone` | Phone number | text | No | `lead.phone_normalized` | Trim; remove whitespace, parentheses, periods, and hyphens. | `null` | String or `null`; must match `^\+[1-9]\d{6,14}$`. |
 | `company` | Company | text | No | `lead.company` | Trim and collapse whitespace runs. | `null` | String or `null`; maximum 160 characters. |
-| `company_website` | Company website | text | No | `lead.company_website` | Trim; parse as URL, remove fragment, and serialize. Invalid input remains trimmed for validation to reject. | `null` | URI string or `null`; HTTP(S) only; maximum 2,048 characters. |
+| `company_website` | Company website | text | No | `lead.company_website` | Trim, remove the fragment, lowercase the HTTP(S) scheme and authority, and add `/` when the path is empty. Invalid input remains trimmed for validation to reject. | `null` | HTTP(S) URL string or `null`; valid hostname and optional port; maximum 2,048 characters. |
 | `service_requested` | Service requested | dropdown | No | `lead.service_requested` | Normalize whitespace and map to the canonical value below. | `null` | Canonical enum string or `null`. |
 | `message` | Tell us about your requirement | textarea | Yes | `lead.message_sanitized` | Normalize line endings, remove disallowed control characters, and trim. | Omit. | Required string; length 1–5,000. |
 | `budget` | Estimated budget | dropdown | No | `lead.budget_band` | Normalize whitespace and map to the canonical value below. | `null` | Canonical enum string or `null`. |

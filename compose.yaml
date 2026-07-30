@@ -19,12 +19,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   n8n:
-    build:
-      context: .
-      dockerfile: deployment/n8n/Dockerfile
-      args:
-        N8N_VERSION: ${N8N_VERSION}
-    image: celes7a/n8n-ajv:${N8N_VERSION}
+    image: docker.n8n.io/n8nio/n8n:${N8N_VERSION}
     restart: unless-stopped
     ports:
       - "${N8N_PORT}:5678"
@@ -42,7 +37,6 @@ services:
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
       TZ: ${GENERIC_TIMEZONE}
       N8N_RUNNERS_MODE: internal
-      NODE_FUNCTION_ALLOW_EXTERNAL: asset001-ajv/dist/runtime/ucs2length,asset001-ajv-formats/dist/formats
       NODE_FUNCTION_ALLOW_BUILTIN: crypto
       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
     volumes:

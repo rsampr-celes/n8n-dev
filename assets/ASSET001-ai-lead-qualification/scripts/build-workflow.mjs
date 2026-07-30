@@ -1,9 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
-import standaloneCode from 'ajv/dist/standalone/index.js';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const assetDirectory = path.resolve(scriptDirectory, '..');
@@ -17,13 +14,11 @@ const hubspotMatchWorkflowPath = path.join(
   workflowsDirectory,
   'ASSET001-hubspot-contact-match.json',
 );
-const schemaPath = path.join(assetDirectory, 'schemas', 'lead-submission.schema.json');
 const sourceDirectory = path.join(assetDirectory, 'src');
 const normalizationSourcePath = path.join(sourceDirectory, 'normalize-lead.js');
 const validationSourcePath = path.join(sourceDirectory, 'validate-lead.js');
 
 const workflow = JSON.parse(fs.readFileSync(workflowPath, 'utf8'));
-const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
 const normalizationSource = fs.readFileSync(normalizationSourcePath, 'utf8');
 const validationSource = fs.readFileSync(validationSourcePath, 'utf8');
 const idempotencySource = fs.readFileSync(
@@ -54,36 +49,6 @@ const produceMatchDecisionSource = fs.readFileSync(
   path.join(sourceDirectory, 'produce-match-decision.js'),
   'utf8',
 );
-const marker = '/*__AJV_STANDALONE_VALIDATOR__*/';
-
-if (!validationSource.includes(marker)) {
-  throw new Error(`Standalone-validator marker was not found in ${validationSourcePath}`);
-}
-
-const ajv = new Ajv({
-  allErrors: true,
-  strict: true,
-  coerceTypes: false,
-  useDefaults: false,
-  removeAdditional: false,
-  code: { source: true },
-});
-addFormats(ajv);
-const compiledValidator = ajv.compile(schema);
-const generatedModule = standaloneCode(ajv, compiledValidator)
-  .replaceAll('require("ajv/', 'require("asset001-ajv/')
-  .replaceAll('require("ajv-formats/', 'require("asset001-ajv-formats/');
-
-const embeddedValidator = [
-  'const validatorModule = { exports: {} };',
-  '((module, exports, require) => {',
-  generatedModule,
-  '})(validatorModule, validatorModule.exports, require);',
-  'const validateLead = validatorModule.exports;',
-].join('\n');
-
-const validationCode = validationSource.replace(marker, embeddedValidator);
-
 function booleanIfNode({ id, name, position, leftValue }) {
   return {
     parameters: {
@@ -227,7 +192,7 @@ workflow.nodes.push(
     id: 'asset001-validate',
     name: 'Validate Lead',
     position: [780, 300],
-    jsCode: validationCode,
+    jsCode: validationSource,
   }),
   booleanIfNode({
     id: 'asset001-is-valid',

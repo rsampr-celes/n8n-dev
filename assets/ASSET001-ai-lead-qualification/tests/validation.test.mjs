@@ -4,8 +4,6 @@ import path from 'node:path';
 import test from 'node:test';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
 
 const require = createRequire(import.meta.url);
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -15,12 +13,6 @@ const workflow = JSON.parse(
 );
 const idempotencyWorkflow = JSON.parse(
   fs.readFileSync(path.join(assetDirectory, 'workflows', 'ASSET001-idempotency-guard.json'), 'utf8'),
-);
-const leadSchema = JSON.parse(
-  fs.readFileSync(path.join(assetDirectory, 'schemas', 'lead-submission.schema.json'), 'utf8'),
-);
-const errorSchema = JSON.parse(
-  fs.readFileSync(path.join(assetDirectory, 'schemas', 'validation-error.schema.json'), 'utf8'),
 );
 const validInput = JSON.parse(
   fs.readFileSync(path.join(assetDirectory, 'examples', 'valid-lead.json'), 'utf8'),
@@ -71,16 +63,27 @@ const executeApplyIdempotencyConfigNode = new Function(
   '$',
   applyIdempotencyConfigNode.parameters.jsCode,
 );
-const runtimeRequire = (specifier) => require(
-  specifier
-    .replace(/^asset001-ajv\//, 'ajv/')
-    .replace(/^asset001-ajv-formats\//, 'ajv-formats/'),
-);
+const runtimeRequire = require;
+const ERROR_FIELDS = [
+  'field',
+  'path',
+  'code',
+  'message',
+  'keyword',
+  'details',
+  'schema_path',
+];
 
-const schemaAjv = new Ajv({ allErrors: true, strict: true });
-addFormats(schemaAjv);
-const validateCanonicalLead = schemaAjv.compile(leadSchema);
-const validateError = schemaAjv.compile(errorSchema);
+function assertValidationError(error) {
+  assert.deepEqual(Object.keys(error).sort(), [...ERROR_FIELDS].sort());
+  assert.ok(error.field === null || typeof error.field === 'string');
+  assert.equal(typeof error.path, 'string');
+  assert.equal(typeof error.code, 'string');
+  assert.equal(typeof error.message, 'string');
+  assert.equal(typeof error.keyword, 'string');
+  assert.ok(error.details && typeof error.details === 'object');
+  assert.equal(typeof error.schema_path, 'string');
+}
 
 function clone(value) {
   return structuredClone(value);
@@ -98,7 +101,7 @@ function validate(normalized) {
   });
   assert.equal(output.length, 1);
   for (const error of output[0].json.validation.errors) {
-    assert.equal(validateError(error), true, JSON.stringify(validateError.errors));
+    assertValidationError(error);
   }
   return output[0].json;
 }
@@ -167,6 +170,13 @@ test('normalization and validation are separate workflow stages', () => {
   assert.equal(validated.validation.is_valid, true);
   assert.deepEqual(Object.keys(validated), ['validation']);
   assert.equal(Object.hasOwn(validated, 'lead'), false);
+});
+
+test('validation is self-contained plain JavaScript', () => {
+  assert.doesNotMatch(validateNode.parameters.jsCode, /\brequire\s*\(/);
+  assert.doesNotMatch(validateNode.parameters.jsCode, /\bAjv\b|asset001-ajv/i);
+  assert.doesNotMatch(validateNode.parameters.jsCode, /\bnew URL\s*\(/);
+  assert.doesNotMatch(normalizeNode.parameters.jsCode, /\bnew URL\s*\(/);
 });
 
 test('sub-workflow handoff contains only normalized input', () => {
@@ -251,6 +261,15 @@ test('V10 invalid website returns invalid_format', () => {
   assert.ok(codes(run(input)).includes('invalid_format'));
 });
 
+test('V10a root website is normalized and valid without the URL global', () => {
+  const input = clone(validInput);
+  input.company_website = ' HTTPS://Example.TEST#contact ';
+  const result = run(input);
+
+  assert.equal(result.validation.is_valid, true);
+  assert.equal(result.lead.company_website, 'https://example.test/');
+});
+
 test('V11 non-HTTP website returns invalid_format', () => {
   const input = clone(validInput);
   input.company_website = 'ftp://example.test/file';
@@ -327,8 +346,11 @@ test('V18 multiple invalid fields return all errors', () => {
 test('V19 canonical schema rejects an extra property', () => {
   const canonical = run(clone(validInput)).lead;
   canonical.unexpected = 'value';
-  assert.equal(validateCanonicalLead(canonical), false);
-  assert.ok(validateCanonicalLead.errors.some((error) => error.keyword === 'additionalProperties'));
+  const result = validate({ lead: canonical });
+  assert.equal(result.validation.is_valid, false);
+  assert.ok(
+    result.validation.errors.some((error) => error.keyword === 'additionalProperties'),
+  );
 });
 
 test('V20 unsafe control characters are removed from message', () => {
