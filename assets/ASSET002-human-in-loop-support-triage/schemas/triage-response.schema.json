@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://celes7a.example/schemas/asset002-triage-response.schema.json",
+  "title": "ASSET002 AI triage response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["category", "intent", "urgency", "sentiment", "assigned_team", "sensitivity_flags", "confidence", "summary", "escalation_reason"],
+  "properties": {
+    "category": { "type": "string", "enum": ["account_access", "billing_payments", "orders_delivery", "product_information", "technical_support", "cancellation_refund", "complaint", "general_enquiry", "unknown"] },
+    "intent": { "type": "string", "enum": ["information", "problem_resolution", "transaction_request", "complaint", "cancellation", "refund", "security_report", "other", "unknown"] },
+    "urgency": { "type": "string", "enum": ["low", "normal", "high", "critical"] },
+    "sentiment": { "type": "string", "enum": ["positive", "neutral", "negative", "angry", "distressed"] },
+    "assigned_team": { "type": "string", "enum": ["general_support", "billing", "technical", "orders", "account_security", "retention", "specialist_review"] },
+    "sensitivity_flags": { "type": "array", "maxItems": 5, "uniqueItems": true, "items": { "type": "string", "enum": ["personal_data", "security", "legal_compliance", "financial_exception", "harmful_content"] } },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "escalation_reason": { "type": ["string", "null"], "maxLength": 200 }
+  }
+}

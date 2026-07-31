@@ -1,0 +1,383 @@
+{
+  "id": "ASSET002PrepareMessage01",
+  "name": "ASSET002 - Prepare Message",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "raw_event",
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ],
+      "id": "asset002-prepare-message-trigger",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const workflowItem = $input.first()?.json ?? {};\nconst raw = workflowItem.raw_event && typeof workflowItem.raw_event === 'object'\n  ? workflowItem.raw_event\n  : workflowItem;\nconst payload = raw.body && typeof raw.body === 'object' ? raw.body : raw;\n\nfunction cleanText(value, maxLength) {\n  if (typeof value !== 'string') return null;\n  const cleaned = value.replace(/\\u0000/g, '').replace(/\\r\\n?/g, '\\n').trim();\n  return cleaned ? cleaned.slice(0, maxLength) : null;\n}\n\nfunction finiteId(value) {\n  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return String(value);\n  if (typeof value === 'string' && /^[1-9]\\d*$/.test(value.trim())) return value.trim();\n  return null;\n}\n\nconst messageType = payload.message_type === 0 || payload.message_type === 'incoming'\n  ? 'incoming'\n  : payload.message_type === 1 || payload.message_type === 'outgoing'\n    ? 'outgoing'\n    : 'unknown';\nconst isPrivate = payload.private === true;\nconst eventName = cleanText(payload.event, 100);\nconst eventKind = eventName === 'message_created' && messageType === 'incoming'\n  ? 'incoming_customer_message'\n  : eventName === 'message_created' && messageType === 'outgoing' && !isPrivate\n    ? 'agent_public_message'\n    : 'ignored';\n\nreturn [{\n  json: {\n    event_kind: eventKind,\n    event_name: eventName,\n    conversation_id: finiteId(payload.conversation?.id ?? payload.conversation_id),\n    message_id: finiteId(payload.id ?? payload.message?.id),\n    inbox_id: finiteId(payload.inbox?.id ?? payload.conversation?.inbox_id),\n    account_id: finiteId(payload.account?.id ?? payload.account_id),\n    channel: cleanText(payload.conversation?.channel ?? payload.channel, 100),\n    message: cleanText(payload.content ?? payload.message?.content, 8000),\n    sender_name: cleanText(payload.sender?.name, 200),\n    sender_email: cleanText(payload.sender?.email, 320)?.toLowerCase() ?? null,\n    occurred_at: typeof payload.created_at === 'number'\n      ? new Date(payload.created_at * 1000).toISOString()\n      : cleanText(payload.created_at, 100),\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        300
+      ],
+      "id": "asset002-normalize-event",
+      "name": "Normalize Chatwoot Event"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const ALLOWED_FIELDS = new Set([\n  'event_kind', 'event_name', 'conversation_id', 'message_id', 'inbox_id',\n  'account_id', 'channel', 'message', 'sender_name', 'sender_email', 'occurred_at',\n]);\n\nreturn $input.all().map((item, index) => {\n  const value = item.json ?? {};\n  const errors = [];\n  for (const key of Object.keys(value)) {\n    if (!ALLOWED_FIELDS.has(key)) errors.push({ field: key, code: 'undeclared_property' });\n  }\n  if (!['incoming_customer_message', 'agent_public_message', 'ignored'].includes(value.event_kind)) {\n    errors.push({ field: 'event_kind', code: 'invalid_enum' });\n  }\n  if (value.event_kind !== 'ignored') {\n    if (!value.conversation_id) errors.push({ field: 'conversation_id', code: 'required' });\n    if (!value.message_id) errors.push({ field: 'message_id', code: 'required' });\n    if (!value.account_id) errors.push({ field: 'account_id', code: 'required' });\n    if (!value.message) errors.push({ field: 'message', code: 'required' });\n  }\n  if (value.sender_email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value.sender_email)) {\n    errors.push({ field: 'sender_email', code: 'invalid_format' });\n  }\n\n  return {\n    json: {\n      support_event: errors.length === 0 ? value : null,\n      validation: { is_valid: errors.length === 0, errors },\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ],
+      "id": "asset002-validate-event",
+      "name": "Validate Support Event"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "asset002-event-valid-condition",
+              "leftValue": "={{ $json.validation.is_valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        300
+      ],
+      "id": "asset002-event-valid",
+      "name": "Is Event Valid?"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "asset002-route-event-incoming_customer_message",
+                    "leftValue": "={{ $json.support_event.event_kind }}",
+                    "rightValue": "incoming_customer_message",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "incoming_customer_message"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "asset002-route-event-agent_public_message",
+                    "leftValue": "={{ $json.support_event.event_kind }}",
+                    "rightValue": "agent_public_message",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "agent_public_message"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "asset002-route-event-ignored",
+                    "leftValue": "={{ $json.support_event.event_kind }}",
+                    "rightValue": "ignored",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "ignored"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1300,
+        220
+      ],
+      "id": "asset002-route-event",
+      "name": "Route Event Kind"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { createHash, randomUUID } = require('crypto');\n\nreturn $input.all().map((item, index) => {\n  const event = item.json.support_event;\n  const source = `${event.account_id}|${event.conversation_id}|${event.message_id}|${event.event_kind}`;\n  return {\n    json: {\n      support_event: event,\n      correlation_id: randomUUID(),\n      idempotency_key: createHash('sha256').update(source, 'utf8').digest('hex'),\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        80
+      ],
+      "id": "asset002-prepare-claim",
+      "name": "Prepare Idempotency Claim"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO asset002_audit.message_processing AS existing\n  (idempotency_key, correlation_id, account_id, conversation_id, message_id, event_kind, status)\nVALUES ($1, $2::uuid, $3::bigint, $4::bigint, $5::bigint, $6, 'processing')\nON CONFLICT (idempotency_key) DO UPDATE SET updated_at = existing.updated_at\nRETURNING CASE WHEN xmax = 0 THEN 'claimed' ELSE 'duplicate' END AS claim_action;",
+        "options": {
+          "queryReplacement": "={{ [$json.idempotency_key, $json.correlation_id, $json.support_event.account_id, $json.support_event.conversation_id, $json.support_event.message_id, $json.support_event.event_kind] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1820,
+        80
+      ],
+      "id": "asset002-claim-message",
+      "name": "Claim Message Processing",
+      "credentials": {
+        "postgres": {
+          "id": "asset001-audit-postgres",
+          "name": "ASSET001 Audit PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const claim = $('Prepare Idempotency Claim').first().json;\nconst result = $input.first()?.json ?? {};\nconst action = result.claim_action === 'claimed' ? 'claimed' : 'duplicate';\n\nreturn [{\n  json: {\n    route: action === 'claimed' ? 'incoming_new' : 'incoming_duplicate',\n    support_event: claim.support_event,\n    correlation_id: claim.correlation_id,\n    idempotency_key: claim.idempotency_key,\n    idempotency: {\n      action,\n      should_process: action === 'claimed',\n    },\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        80
+      ],
+      "id": "asset002-attach-claim",
+      "name": "Attach Idempotency Result"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map((item, index) => {\n  const event = item.json.support_event;\n  return {\n    json: {\n      route: event.event_kind,\n      support_event: event,\n      correlation_id: null,\n      idempotency_key: null,\n      idempotency: { action: 'not_applicable', should_process: false },\n      validation: item.json.validation,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        260
+      ],
+      "id": "asset002-prepare-agent-event",
+      "name": "Prepare Agent Delivery Event"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return $input.all().map((item, index) => {\n  const event = item.json.support_event;\n  return {\n    json: {\n      route: event.event_kind,\n      support_event: event,\n      correlation_id: null,\n      idempotency_key: null,\n      idempotency: { action: 'not_applicable', should_process: false },\n      validation: item.json.validation,\n    },\n    pairedItem: { item: index },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        420
+      ],
+      "id": "asset002-prepare-ignored-event",
+      "name": "Prepare Ignored Event"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const validation = $input.first()?.json?.validation ?? {\n  is_valid: false,\n  errors: [{ field: 'support_event', code: 'invalid_input' }],\n};\n\nreturn [{\n  json: {\n    route: 'invalid',\n    support_event: null,\n    correlation_id: null,\n    idempotency_key: null,\n    idempotency: { action: 'not_applicable', should_process: false },\n    validation,\n  },\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        520
+      ],
+      "id": "asset002-prepare-invalid-event",
+      "name": "Prepare Invalid Event"
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Normalize Chatwoot Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Chatwoot Event": {
+      "main": [
+        [
+          {
+            "node": "Validate Support Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Support Event": {
+      "main": [
+        [
+          {
+            "node": "Is Event Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Event Valid?": {
+      "main": [
+        [
+          {
+            "node": "Route Event Kind",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Invalid Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Event Kind": {
+      "main": [
+        [
+          {
+            "node": "Prepare Idempotency Claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Agent Delivery Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Ignored Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Idempotency Claim": {
+      "main": [
+        [
+          {
+            "node": "Claim Message Processing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Message Processing": {
+      "main": [
+        [
+          {
+            "node": "Attach Idempotency Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Kiev",
+    "callerPolicy": "workflowsFromAList",
+    "callerIds": "ASSET002Main01"
+  },
+  "active": false,
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

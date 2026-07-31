@@ -5,6 +5,9 @@
   "description": "Versioned n8n workflow assets and contract tests",
   "scripts": {
     "build:asset001": "node assets/ASSET001-ai-lead-qualification/scripts/build-workflow.mjs",
-    "test": "npm run build:asset001 && node --test assets/ASSET001-ai-lead-qualification/tests/validation.test.mjs assets/ASSET001-ai-lead-qualification/tests/hubspot-contact-match.test.mjs assets/ASSET001-ai-lead-qualification/tests/ai-qualification.test.mjs assets/ASSET001-ai-lead-qualification/tests/hubspot-contact-deal.test.mjs"
+    "build:asset002": "node assets/ASSET002-human-in-loop-support-triage/scripts/build-workflows.mjs",
+    "test:asset001": "npm run build:asset001 && node --test assets/ASSET001-ai-lead-qualification/tests/validation.test.mjs assets/ASSET001-ai-lead-qualification/tests/hubspot-contact-match.test.mjs assets/ASSET001-ai-lead-qualification/tests/ai-qualification.test.mjs assets/ASSET001-ai-lead-qualification/tests/hubspot-contact-deal.test.mjs",
+    "test:asset002": "npm run build:asset002 && node --test assets/ASSET002-human-in-loop-support-triage/tests/workflows.test.mjs assets/ASSET002-human-in-loop-support-triage/tests/postman.test.mjs",
+    "test": "npm run test:asset001 && npm run test:asset002"
   }
 }

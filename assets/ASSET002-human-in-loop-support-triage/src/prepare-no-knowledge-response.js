@@ -1,0 +1,1 @@
+return [{ json: { response_preparation: { status: 'manual_handling', proposed_response: null, sources: [], confidence: 0, recommended_agent_action: 'manual_response', warnings: ['approved_knowledge_not_found'], requires_human_approval: true }, validation: { is_valid: true, errors: [] } } }];
