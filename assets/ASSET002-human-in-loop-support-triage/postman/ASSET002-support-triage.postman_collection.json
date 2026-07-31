@@ -2,14 +2,21 @@
   "info": {
     "_postman_id": "5fc84935-47fa-43b5-a457-220020020001",
     "name": "ASSET002 - Human-in-the-Loop Support Triage",
-    "description": "Exercises the published ASSET002 Chatwoot webhook with synthetic message_created events. Run requests in order. HTTP 200 confirms that n8n accepted the event; inspect n8n executions, Chatwoot private notes, and the asset002_audit tables to verify asynchronous outcomes.",
+    "description": "Exercises the published ASSET002 webhook with synthetic events and provides a Chatwoot API end-to-end sequence. Run the direct webhook scenarios independently, or run the Chatwoot folder in order to create a contact, conversation, and incoming message that Chatwoot forwards to n8n.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:5681", "type": "string" },
     { "key": "webhookPath", "value": "webhook/asset002-chatwoot-events", "type": "string" },
+    { "key": "chatwootBaseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "chatwootWebsiteToken", "value": "", "type": "string" },
     { "key": "accountId", "value": "1", "type": "string" },
     { "key": "inboxId", "value": "1", "type": "string" },
+    { "key": "chatwootContactEmail", "value": "", "type": "string" },
+    { "key": "chatwootContactId", "value": "", "type": "string" },
+    { "key": "chatwootWidgetAuthToken", "value": "", "type": "string" },
+    { "key": "chatwootConversationId", "value": "", "type": "string" },
+    { "key": "chatwootMessageId", "value": "", "type": "string" },
     { "key": "conversationId", "value": "20001", "type": "string" },
     { "key": "standardMessageId", "value": "900001", "type": "string" },
     { "key": "sensitiveMessageId", "value": "900002", "type": "string" },
@@ -23,8 +30,8 @@
       "script": {
         "type": "text/javascript",
         "exec": [
-          "pm.test('n8n accepted the webhook event', function () {",
-          "  pm.response.to.have.status(200);",
+          "pm.test('Request completed successfully', function () {",
+          "  pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
           "});",
           "pm.test('Webhook acknowledgement is prompt', function () {",
           "  pm.expect(pm.response.responseTime).to.be.below(5000);",
@@ -140,6 +147,154 @@
         "url": { "raw": "{{baseUrl}}/{{webhookPath}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"] }
       },
       "response": []
+    },
+    {
+      "name": "07 - Chatwoot End-to-End",
+      "description": "Run this folder in order. It initializes a Website widget session, creates a synthetic contact and conversation, then sends an incoming widget message. Chatwoot emits the configured message_created webhook to ASSET002. Set chatwootWebsiteToken from the inbox Script tab before running.",
+      "item": [
+        {
+          "name": "01 - Initialize Website Widget Session",
+          "description": "Initializes a real Website widget session. Chatwoot creates an anonymous contact and returns the X-Auth-Token required by subsequent widget requests.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const seed = Date.now();",
+                  "pm.collectionVariables.set('chatwootContactEmail', `postman.${seed}@example.com`);",
+                  "pm.expect(pm.collectionVariables.get('chatwootWebsiteToken'), 'Set chatwootWebsiteToken from the Website inbox Script tab').to.not.be.empty;"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "const widgetAuthToken = body.website_channel_config && body.website_channel_config.auth_token;",
+                  "pm.expect(body.contact && body.contact.id, 'contact ID').to.exist;",
+                  "pm.expect(widgetAuthToken, 'widget auth token').to.exist;",
+                  "pm.collectionVariables.set('chatwootContactId', String(body.contact.id));",
+                  "pm.collectionVariables.set('chatwootWidgetAuthToken', String(widgetAuthToken));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"website_token\": \"{{chatwootWebsiteToken}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{chatwootBaseUrl}}/api/v1/widget/config",
+              "host": ["{{chatwootBaseUrl}}"],
+              "path": ["api", "v1", "widget", "config"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "02 - Create Website Conversation",
+          "description": "Identifies the widget contact and creates the Website conversation with an initial incoming message, matching the behavior of the live-chat widget.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.expect(pm.collectionVariables.get('chatwootContactId'), 'Run Initialize Website Widget Session first').to.not.be.empty;",
+                  "pm.expect(pm.collectionVariables.get('chatwootWidgetAuthToken'), 'Missing widget auth token').to.not.be.empty;"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.expect(body.id, 'conversation ID').to.exist;",
+                  "pm.expect(Number(body.inbox_id)).to.eql(Number(pm.collectionVariables.get('inboxId')));",
+                  "pm.collectionVariables.set('chatwootConversationId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "X-Auth-Token", "value": "{{chatwootWidgetAuthToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"website_token\": \"{{chatwootWebsiteToken}}\",\n  \"contact\": {\n    \"name\": \"Postman Website Customer\",\n    \"email\": \"{{chatwootContactEmail}}\"\n  },\n  \"message\": {\n    \"content\": \"Starting an ASSET002 Postman test conversation.\",\n    \"referer_url\": \"http://localhost:8080\",\n    \"timestamp\": {{$timestamp}},\n    \"echo_id\": \"postman-start-{{$timestamp}}\"\n  },\n  \"custom_attributes\": { \"test_source\": \"ASSET002 Postman\" }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{chatwootBaseUrl}}/api/v1/widget/conversations",
+              "host": ["{{chatwootBaseUrl}}"],
+              "path": ["api", "v1", "widget", "conversations"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "03 - Send Incoming Chatwoot Message",
+          "description": "Creates an incoming customer message through Chatwoot's Website widget API. Chatwoot should emit message_created to the configured ASSET002 n8n webhook; inspect the n8n execution and Chatwoot private review note for the final result.",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.expect(pm.collectionVariables.get('chatwootConversationId'), 'Run Create Chatwoot Conversation first').to.not.be.empty;",
+                  "pm.expect(pm.collectionVariables.get('chatwootWidgetAuthToken'), 'Run Initialize Website Widget Session first').to.not.be.empty;",
+                  "pm.expect(pm.collectionVariables.get('chatwootWebsiteToken'), 'Set chatwootWebsiteToken from the Website inbox Script tab').to.not.be.empty;"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.expect(body.id, 'message ID').to.exist;",
+                  "pm.expect(body.message_type, 'incoming message type').to.eql(0);",
+                  "pm.expect(body.private).to.eql(false);",
+                  "pm.collectionVariables.set('chatwootMessageId', String(body.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" },
+              { "key": "X-Auth-Token", "value": "{{chatwootWidgetAuthToken}}", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"website_token\": \"{{chatwootWebsiteToken}}\",\n  \"message\": {\n    \"content\": \"Where can I download a copy of my latest invoice?\",\n    \"referer_url\": \"http://localhost:8080\",\n    \"timestamp\": {{$timestamp}},\n    \"echo_id\": \"postman-{{$timestamp}}\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{chatwootBaseUrl}}/api/v1/widget/messages",
+              "host": ["{{chatwootBaseUrl}}"],
+              "path": ["api", "v1", "widget", "messages"]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

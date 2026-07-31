@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+!.env.chatwoot.example
+!.env.chatwoot-n8n.example
 *.key
 *.pem
 

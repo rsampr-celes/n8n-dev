@@ -56,4 +56,6 @@ Source files under `src/` are authoritative. `scripts/build-workflows.mjs` embed
 
 ## Postman
 
-Import `postman/ASSET002-support-triage.postman_collection.json` after activating the Main Flow. Run requests 01–06 in order. Request 01 generates unique conversation and message IDs; request 02 deliberately reuses the first ID to exercise duplicate prevention. The remaining requests cover sensitive escalation, invalid input, agent-delivery auditing, and private-note loop prevention.
+Import `postman/ASSET002-support-triage.postman_collection.json` after activating the Main Flow. Requests 01–06 send synthetic events directly to n8n. Request 01 generates unique conversation and message IDs; request 02 deliberately reuses the first ID to exercise duplicate prevention. The remaining direct requests cover sensitive escalation, invalid input, agent-delivery auditing, and private-note loop prevention.
+
+For a real Chatwoot-triggered test, set `chatwootWebsiteToken` in the collection variables, then run the `07 - Chatwoot End-to-End` folder in order. The Website token is available from the inbox's **Script** tab. The folder initializes an authentic widget session, captures its short-lived `X-Auth-Token`, creates the Website conversation with an initial message, and sends another incoming message through Chatwoot's widget API. Chatwoot then emits `message_created` to the configured ASSET002 webhook. The exported collection intentionally leaves the Website and widget-session tokens blank.
