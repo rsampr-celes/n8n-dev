@@ -1,9 +1,9 @@
-const claim = $('Execute Prepare Message').first().json;
+const prepared = $('Execute Prepare Message').first().json;
 const triage = $('Execute AI Triage').first().json.triage;
 const preparation = $input.first().json.response_preparation;
 const lines = [
   'AI support triage — internal review only',
-  `Correlation: ${claim.correlation_id}`,
+  `Correlation: ${prepared.correlation_id}`,
   `Category: ${triage.category}`,
   `Intent: ${triage.intent}`,
   `Urgency: ${triage.urgency}`,
@@ -23,9 +23,9 @@ const lines = [
 ];
 
 return [{ json: {
-  account_id: claim.support_event.account_id,
-  conversation_id: claim.support_event.conversation_id,
-  correlation_id: claim.correlation_id,
+  account_id: prepared.support_event.account_id,
+  conversation_id: prepared.support_event.conversation_id,
+  correlation_id: prepared.correlation_id,
   triage,
   response_preparation: preparation,
   chatwoot_request: { content: lines.filter((line, index) => line || index > 0).join('\n').slice(0, 12000), message_type: 'outgoing', private: true },

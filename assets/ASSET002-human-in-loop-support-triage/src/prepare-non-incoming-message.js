@@ -5,8 +5,6 @@ return $input.all().map((item, index) => {
       route: event.event_kind,
       support_event: event,
       correlation_id: null,
-      idempotency_key: null,
-      idempotency: { action: 'not_applicable', should_process: false },
       validation: item.json.validation,
     },
     pairedItem: { item: index },

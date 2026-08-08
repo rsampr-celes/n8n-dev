@@ -19,10 +19,10 @@ test('Postman collection covers six support-event scenarios and one Chatwoot end
   assert.equal(collection.item.length, 7);
   assert.deepEqual(collection.item.map((item) => item.name), [
     '01 - Standard Incoming Customer Message',
-    '02 - Exact Duplicate Replay',
+    '02 - Replayed Incoming Message',
     '03 - Sensitive Security Request',
     '04 - Invalid Incoming Event',
-    '05 - Public Agent Response Delivery',
+    '05 - Public Agent Response Ignored',
     '06 - Private Chatwoot Note Ignored',
     '07 - Chatwoot End-to-End',
   ]);
@@ -31,7 +31,8 @@ test('Postman collection covers six support-event scenarios and one Chatwoot end
 test('direct event requests target the production webhook with JSON bodies', () => {
   for (const item of collection.item.slice(0, 6)) {
     assert.equal(item.request.method, 'POST');
-    assert.equal(item.request.url.raw, '{{baseUrl}}/{{webhookPath}}');
+    assert.equal(item.request.url.raw, '{{baseUrl}}/{{webhookPath}}?token={{automationWebhookToken}}');
+    assert.deepEqual(item.request.url.query, [{ key: 'token', value: '{{automationWebhookToken}}' }]);
     assert.equal(item.request.header[0].value, 'application/json');
     assert.equal(item.request.body.mode, 'raw');
     assert.doesNotThrow(() => JSON.parse(item.request.body.raw));
@@ -79,7 +80,7 @@ test('Chatwoot end-to-end folder uses the Website widget API for incoming messag
   assert.match(messageBody.message.echo_id, /^postman-/);
 });
 
-test('duplicate replay uses the same canonical business identifiers', () => {
+test('replayed request uses the same identifiers and is expected to process again', () => {
   const initial = requestBody(0);
   const duplicate = requestBody(1);
   assert.equal(duplicate.id, initial.id);
@@ -88,17 +89,17 @@ test('duplicate replay uses the same canonical business identifiers', () => {
   assert.equal(duplicate.content, initial.content);
 });
 
-test('negative, delivery, and loop-prevention events have the intended shapes', () => {
+test('negative, ignored-agent, and loop-prevention events have the intended shapes', () => {
   const sensitive = requestBody(2);
   const invalid = requestBody(3);
-  const delivery = requestBody(4);
+  const ignoredAgent = requestBody(4);
   const privateNote = requestBody(5);
 
   assert.match(sensitive.content, /compromised|personal information/i);
   assert.equal(Object.hasOwn(invalid, 'content'), false);
   assert.equal(Object.hasOwn(invalid, 'account'), false);
-  assert.equal(delivery.message_type, 'outgoing');
-  assert.equal(delivery.private, false);
+  assert.equal(ignoredAgent.message_type, 'outgoing');
+  assert.equal(ignoredAgent.private, false);
   assert.equal(privateNote.message_type, 'outgoing');
   assert.equal(privateNote.private, true);
 });
@@ -107,8 +108,10 @@ test('collection contains only synthetic example.com identities and no secret va
   const serialized = JSON.stringify(collection);
   const websiteTokenVariable = collection.variable.find((variable) => variable.key === 'chatwootWebsiteToken');
   const widgetAuthTokenVariable = collection.variable.find((variable) => variable.key === 'chatwootWidgetAuthToken');
+  const automationTokenVariable = collection.variable.find((variable) => variable.key === 'automationWebhookToken');
   assert.equal(websiteTokenVariable.value, '');
   assert.equal(widgetAuthTokenVariable.value, '');
+  assert.equal(automationTokenVariable.value, '');
   assert.doesNotMatch(serialized, /authorization|bearer|CHATWOOT_API_ACCESS_TOKEN/i);
   assert.doesNotMatch(serialized, /api_access_token|chatwootApiToken/);
   assert.doesNotMatch(serialized, /@(?!example\.com)/i);

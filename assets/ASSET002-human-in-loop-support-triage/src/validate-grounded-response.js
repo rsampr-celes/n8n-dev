@@ -12,9 +12,10 @@ if (!value || typeof value !== 'object' || Array.isArray(value)) {
   for (const key of required) if (!(key in value)) errors.push({ field: key, code: 'required' });
   if (typeof value.proposed_response !== 'string' || !value.proposed_response.trim() || value.proposed_response.length > 4000) errors.push({ field: 'proposed_response', code: 'invalid_length' });
   if (!Array.isArray(value.source_ids) || value.source_ids.length === 0 || value.source_ids.some((id) => !sourceIds.has(id))) errors.push({ field: 'source_ids', code: 'unsupported_source' });
+  else if (value.source_ids.length > 3 || new Set(value.source_ids).size !== value.source_ids.length) errors.push({ field: 'source_ids', code: 'invalid_cardinality' });
   if (typeof value.confidence !== 'number' || value.confidence < 0 || value.confidence > 1) errors.push({ field: 'confidence', code: 'out_of_range' });
   if (!allowedActions.includes(value.recommended_agent_action)) errors.push({ field: 'recommended_agent_action', code: 'invalid_enum' });
-  if (!Array.isArray(value.warnings) || value.warnings.some((warning) => typeof warning !== 'string')) errors.push({ field: 'warnings', code: 'invalid_items' });
+  if (!Array.isArray(value.warnings) || value.warnings.length > 5 || value.warnings.some((warning) => typeof warning !== 'string' || warning.length > 200)) errors.push({ field: 'warnings', code: 'invalid_items' });
   const allowedKeys = new Set(required);
   for (const key of Object.keys(value)) if (!allowedKeys.has(key)) errors.push({ field: key, code: 'undeclared_property' });
 }

@@ -8,6 +8,7 @@
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:5681", "type": "string" },
     { "key": "webhookPath", "value": "webhook/asset002-chatwoot-events", "type": "string" },
+    { "key": "automationWebhookToken", "value": "", "type": "string" },
     { "key": "chatwootBaseUrl", "value": "http://localhost:3000", "type": "string" },
     { "key": "chatwootWebsiteToken", "value": "", "type": "string" },
     { "key": "accountId", "value": "1", "type": "string" },
@@ -43,7 +44,7 @@
   "item": [
     {
       "name": "01 - Standard Incoming Customer Message",
-      "description": "Creates unique synthetic identifiers for this run. Expected result: a new audit claim, AI triage, grounded response preparation when knowledge matches, and a private Chatwoot review note.",
+      "description": "Creates unique synthetic identifiers for this run. Expected result: AI triage, grounded response preparation when knowledge matches, and a private Chatwoot review note.",
       "event": [
         {
           "listen": "prerequest",
@@ -69,13 +70,13 @@
           "raw": "{\n  \"event\": \"message_created\",\n  \"id\": \"{{standardMessageId}}\",\n  \"message_type\": \"incoming\",\n  \"private\": false,\n  \"content\": \"Where can I download a copy of my latest invoice?\",\n  \"created_at\": \"2026-07-31T12:00:00.000Z\",\n  \"account\": { \"id\": \"{{accountId}}\" },\n  \"inbox\": { \"id\": \"{{inboxId}}\" },\n  \"conversation\": { \"id\": \"{{conversationId}}\", \"inbox_id\": \"{{inboxId}}\", \"channel\": \"Channel::WebWidget\" },\n  \"sender\": { \"name\": \"Postman Customer\", \"email\": \"postman.customer@example.com\" }\n}",
           "options": { "raw": { "language": "json" } }
         },
-        "url": { "raw": "{{baseUrl}}/{{webhookPath}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"] }
+        "url": { "raw": "{{baseUrl}}/{{webhookPath}}?token={{automationWebhookToken}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"], "query": [{ "key": "token", "value": "{{automationWebhookToken}}" }] }
       },
       "response": []
     },
     {
-      "name": "02 - Exact Duplicate Replay",
-      "description": "Replays request 01 with the same business identifiers. Expected result: Duplicate Event Ignored; no second AI call or Chatwoot draft.",
+      "name": "02 - Replayed Incoming Message",
+      "description": "Replays request 01 with the same business identifiers. Expected result: the event is processed again with a fresh correlation ID, including another AI run and private Chatwoot review note.",
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
@@ -84,7 +85,7 @@
           "raw": "{\n  \"event\": \"message_created\",\n  \"id\": \"{{standardMessageId}}\",\n  \"message_type\": \"incoming\",\n  \"private\": false,\n  \"content\": \"Where can I download a copy of my latest invoice?\",\n  \"created_at\": \"2026-07-31T12:00:00.000Z\",\n  \"account\": { \"id\": \"{{accountId}}\" },\n  \"inbox\": { \"id\": \"{{inboxId}}\" },\n  \"conversation\": { \"id\": \"{{conversationId}}\", \"inbox_id\": \"{{inboxId}}\", \"channel\": \"Channel::WebWidget\" },\n  \"sender\": { \"name\": \"Postman Customer\", \"email\": \"postman.customer@example.com\" }\n}",
           "options": { "raw": { "language": "json" } }
         },
-        "url": { "raw": "{{baseUrl}}/{{webhookPath}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"] }
+        "url": { "raw": "{{baseUrl}}/{{webhookPath}}?token={{automationWebhookToken}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"], "query": [{ "key": "token", "value": "{{automationWebhookToken}}" }] }
       },
       "response": []
     },
@@ -99,13 +100,13 @@
           "raw": "{\n  \"event\": \"message_created\",\n  \"id\": \"{{sensitiveMessageId}}\",\n  \"message_type\": \"incoming\",\n  \"private\": false,\n  \"content\": \"My account may be compromised and I can see another customer's personal information. Please disable access immediately.\",\n  \"created_at\": \"2026-07-31T12:01:00.000Z\",\n  \"account\": { \"id\": \"{{accountId}}\" },\n  \"inbox\": { \"id\": \"{{inboxId}}\" },\n  \"conversation\": { \"id\": \"{{conversationId}}\", \"inbox_id\": \"{{inboxId}}\", \"channel\": \"Channel::WebWidget\" },\n  \"sender\": { \"name\": \"Postman Security Test\", \"email\": \"security.test@example.com\" }\n}",
           "options": { "raw": { "language": "json" } }
         },
-        "url": { "raw": "{{baseUrl}}/{{webhookPath}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"] }
+        "url": { "raw": "{{baseUrl}}/{{webhookPath}}?token={{automationWebhookToken}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"], "query": [{ "key": "token", "value": "{{automationWebhookToken}}" }] }
       },
       "response": []
     },
     {
       "name": "04 - Invalid Incoming Event",
-      "description": "Omits account ID and message content. Expected result: Invalid Event Rejected before idempotency, Chatwoot history, or AI calls. Validation errors must not echo submitted data.",
+      "description": "Omits account ID and message content. Expected result: Invalid Event Rejected before Chatwoot history or AI calls. Validation errors must not echo submitted data.",
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
@@ -114,13 +115,13 @@
           "raw": "{\n  \"event\": \"message_created\",\n  \"id\": \"{{invalidMessageId}}\",\n  \"message_type\": \"incoming\",\n  \"private\": false,\n  \"conversation\": { \"id\": \"{{conversationId}}\", \"channel\": \"Channel::WebWidget\" },\n  \"sender\": { \"name\": \"Invalid Postman Test\" }\n}",
           "options": { "raw": { "language": "json" } }
         },
-        "url": { "raw": "{{baseUrl}}/{{webhookPath}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"] }
+        "url": { "raw": "{{baseUrl}}/{{webhookPath}}?token={{automationWebhookToken}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"], "query": [{ "key": "token", "value": "{{automationWebhookToken}}" }] }
       },
       "response": []
     },
     {
-      "name": "05 - Public Agent Response Delivery",
-      "description": "Simulates a public outgoing Chatwoot message. Expected result: an agent_deliveries audit row containing the final response; no AI processing.",
+      "name": "05 - Public Agent Response Ignored",
+      "description": "Simulates a public outgoing Chatwoot message. Expected result: Ignored Chatwoot Event with no database write or AI processing.",
       "request": {
         "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json", "type": "text" }],
@@ -129,7 +130,7 @@
           "raw": "{\n  \"event\": \"message_created\",\n  \"id\": \"{{agentMessageId}}\",\n  \"message_type\": \"outgoing\",\n  \"private\": false,\n  \"content\": \"You can download the approved invoice from the Billing section of your account.\",\n  \"created_at\": \"2026-07-31T12:05:00.000Z\",\n  \"account\": { \"id\": \"{{accountId}}\" },\n  \"inbox\": { \"id\": \"{{inboxId}}\" },\n  \"conversation\": { \"id\": \"{{conversationId}}\", \"inbox_id\": \"{{inboxId}}\", \"channel\": \"Channel::WebWidget\" },\n  \"sender\": { \"name\": \"Postman Support Agent\", \"email\": \"agent@example.com\" }\n}",
           "options": { "raw": { "language": "json" } }
         },
-        "url": { "raw": "{{baseUrl}}/{{webhookPath}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"] }
+        "url": { "raw": "{{baseUrl}}/{{webhookPath}}?token={{automationWebhookToken}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"], "query": [{ "key": "token", "value": "{{automationWebhookToken}}" }] }
       },
       "response": []
     },
@@ -144,7 +145,7 @@
           "raw": "{\n  \"event\": \"message_created\",\n  \"id\": \"{{privateNoteId}}\",\n  \"message_type\": \"outgoing\",\n  \"private\": true,\n  \"content\": \"AI support triage — internal review only\",\n  \"created_at\": \"2026-07-31T12:06:00.000Z\",\n  \"account\": { \"id\": \"{{accountId}}\" },\n  \"inbox\": { \"id\": \"{{inboxId}}\" },\n  \"conversation\": { \"id\": \"{{conversationId}}\", \"inbox_id\": \"{{inboxId}}\", \"channel\": \"Channel::WebWidget\" },\n  \"sender\": { \"name\": \"Automation\" }\n}",
           "options": { "raw": { "language": "json" } }
         },
-        "url": { "raw": "{{baseUrl}}/{{webhookPath}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"] }
+        "url": { "raw": "{{baseUrl}}/{{webhookPath}}?token={{automationWebhookToken}}", "host": ["{{baseUrl}}"], "path": ["{{webhookPath}}"], "query": [{ "key": "token", "value": "{{automationWebhookToken}}" }] }
       },
       "response": []
     },

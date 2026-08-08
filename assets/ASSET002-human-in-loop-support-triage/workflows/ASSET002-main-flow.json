@@ -21,6 +21,40 @@
     },
     {
       "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "asset002-webhook-authorized-condition",
+              "leftValue": "={{ typeof $env.CHATWOOT_AUTOMATION_WEBHOOK_TOKEN === 'string' && $env.CHATWOOT_AUTOMATION_WEBHOOK_TOKEN.length >= 32 && $json.query?.token === $env.CHATWOOT_AUTOMATION_WEBHOOK_TOKEN }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        520,
+        300
+      ],
+      "id": "asset002-webhook-authorized",
+      "name": "Automation Webhook Authorized?"
+    },
+    {
+      "parameters": {
         "source": "database",
         "workflowId": {
           "__rl": true,
@@ -55,11 +89,22 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        520,
-        300
+        780,
+        220
       ],
       "id": "asset002-execute-prepare-message",
       "name": "Execute Prepare Message"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        780,
+        420
+      ],
+      "id": "asset002-unauthorized-webhook",
+      "name": "Unauthorized Automation Webhook"
     },
     {
       "parameters": {
@@ -75,9 +120,9 @@
                 },
                 "conditions": [
                   {
-                    "id": "asset002-route-prepared-message-incoming_new",
+                    "id": "asset002-route-prepared-message-incoming_customer_message",
                     "leftValue": "={{ $json.route }}",
-                    "rightValue": "incoming_new",
+                    "rightValue": "incoming_customer_message",
                     "operator": {
                       "type": "string",
                       "operation": "equals"
@@ -87,55 +132,7 @@
                 "combinator": "and"
               },
               "renameOutput": true,
-              "outputKey": "incoming_new"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "id": "asset002-route-prepared-message-incoming_duplicate",
-                    "leftValue": "={{ $json.route }}",
-                    "rightValue": "incoming_duplicate",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "incoming_duplicate"
-            },
-            {
-              "conditions": {
-                "options": {
-                  "caseSensitive": true,
-                  "leftValue": "",
-                  "typeValidation": "strict",
-                  "version": 2
-                },
-                "conditions": [
-                  {
-                    "id": "asset002-route-prepared-message-agent_public_message",
-                    "leftValue": "={{ $json.route }}",
-                    "rightValue": "agent_public_message",
-                    "operator": {
-                      "type": "string",
-                      "operation": "equals"
-                    }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "agent_public_message"
+              "outputKey": "incoming_customer_message"
             },
             {
               "conditions": {
@@ -192,8 +189,8 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        780,
-        300
+        1040,
+        220
       ],
       "id": "asset002-route-prepared-message",
       "name": "Route Prepared Message"
@@ -201,7 +198,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "={{ $env.CHATWOOT_BASE_URL + '/api/v1/accounts/' + $json.support_event.account_id + '/conversations/' + $json.support_event.conversation_id + '/messages' }}",
+        "url": "={{ $env.CHATWOOT_BASE_URL + '/api/v1/accounts/' + $('Execute Prepare Message').first().json.support_event.account_id + '/conversations/' + $('Execute Prepare Message').first().json.support_event.conversation_id + '/messages' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -218,7 +215,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        1040,
+        1300,
         40
       ],
       "id": "asset002-fetch-history",
@@ -231,12 +228,12 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const claim = $('Execute Prepare Message').first().json;\nconst response = $input.first()?.json ?? {};\nconst messages = Array.isArray(response.payload) ? response.payload : [];\nconst currentMessageId = claim.support_event.message_id;\n\nconst conversationContext = messages\n  .filter((message) => message && message.private !== true && String(message.id ?? '') !== currentMessageId)\n  .filter((message) => message.message_type === 0 || message.message_type === 1 || message.message_type === 'incoming' || message.message_type === 'outgoing')\n  .slice(-10)\n  .map((message) => ({\n    role: message.message_type === 1 || message.message_type === 'outgoing' ? 'agent' : 'customer',\n    content: typeof message.content === 'string'\n      ? message.content.replace(/\\u0000/g, '').replace(/\\r\\n?/g, '\\n').trim().slice(0, 2000)\n      : '',\n  }))\n  .filter((message) => message.content);\n\nreturn [{ json: { support_event: claim.support_event, conversation_context: conversationContext } }];\n"
+        "jsCode": "const prepared = $('Execute Prepare Message').first().json;\nconst response = $input.first()?.json ?? {};\nconst messages = Array.isArray(response.payload) ? response.payload : [];\nconst currentMessageId = prepared.support_event.message_id;\n\nconst conversationContext = messages\n  .filter((message) => message && message.private !== true && String(message.id ?? '') !== currentMessageId)\n  .filter((message) => message.message_type === 0 || message.message_type === 1 || message.message_type === 'incoming' || message.message_type === 'outgoing')\n  .slice(-10)\n  .map((message) => ({\n    role: message.message_type === 1 || message.message_type === 'outgoing' ? 'agent' : 'customer',\n    content: typeof message.content === 'string'\n      ? message.content.replace(/\\u0000/g, '').replace(/\\r\\n?/g, '\\n').trim().slice(0, 2000)\n      : '',\n  }))\n  .filter((message) => message.content);\n\nreturn [{ json: { support_event: prepared.support_event, conversation_context: conversationContext } }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1300,
+        1560,
         40
       ],
       "id": "asset002-prepare-context",
@@ -288,7 +285,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1560,
+        1820,
         40
       ],
       "id": "asset002-execute-triage",
@@ -350,7 +347,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.3,
       "position": [
-        1820,
+        2080,
         40
       ],
       "id": "asset002-execute-response",
@@ -359,12 +356,12 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const claim = $('Execute Prepare Message').first().json;\nconst triage = $('Execute AI Triage').first().json.triage;\nconst preparation = $input.first().json.response_preparation;\nconst lines = [\n  'AI support triage — internal review only',\n  `Correlation: ${claim.correlation_id}`,\n  `Category: ${triage.category}`,\n  `Intent: ${triage.intent}`,\n  `Urgency: ${triage.urgency}`,\n  `Sentiment: ${triage.sentiment}`,\n  `Assigned team: ${triage.assigned_team}`,\n  `Triage confidence: ${triage.confidence}`,\n  `Route: ${triage.route}`,\n  `Reasons: ${triage.reason_codes.join(', ')}`,\n  `Summary: ${triage.summary}`,\n  '',\n  preparation.status === 'draft_ready' ? 'Proposed response:' : 'No response draft was produced. Manual handling is required.',\n  preparation.proposed_response ?? '',\n  preparation.sources.length ? `Sources: ${preparation.sources.map((source) => `${source.knowledge_id} — ${source.title}`).join('; ')}` : 'Sources: none',\n  `Response confidence: ${preparation.confidence}`,\n  `Recommended action: ${preparation.recommended_agent_action}`,\n  'An authorised agent must review and send any customer-facing response.',\n];\n\nreturn [{ json: {\n  account_id: claim.support_event.account_id,\n  conversation_id: claim.support_event.conversation_id,\n  correlation_id: claim.correlation_id,\n  triage,\n  response_preparation: preparation,\n  chatwoot_request: { content: lines.filter((line, index) => line || index > 0).join('\\n').slice(0, 12000), message_type: 'outgoing', private: true },\n} }];\n"
+        "jsCode": "const prepared = $('Execute Prepare Message').first().json;\nconst triage = $('Execute AI Triage').first().json.triage;\nconst preparation = $input.first().json.response_preparation;\nconst lines = [\n  'AI support triage — internal review only',\n  `Correlation: ${prepared.correlation_id}`,\n  `Category: ${triage.category}`,\n  `Intent: ${triage.intent}`,\n  `Urgency: ${triage.urgency}`,\n  `Sentiment: ${triage.sentiment}`,\n  `Assigned team: ${triage.assigned_team}`,\n  `Triage confidence: ${triage.confidence}`,\n  `Route: ${triage.route}`,\n  `Reasons: ${triage.reason_codes.join(', ')}`,\n  `Summary: ${triage.summary}`,\n  '',\n  preparation.status === 'draft_ready' ? 'Proposed response:' : 'No response draft was produced. Manual handling is required.',\n  preparation.proposed_response ?? '',\n  preparation.sources.length ? `Sources: ${preparation.sources.map((source) => `${source.knowledge_id} — ${source.title}`).join('; ')}` : 'Sources: none',\n  `Response confidence: ${preparation.confidence}`,\n  `Recommended action: ${preparation.recommended_agent_action}`,\n  'An authorised agent must review and send any customer-facing response.',\n];\n\nreturn [{ json: {\n  account_id: prepared.support_event.account_id,\n  conversation_id: prepared.support_event.conversation_id,\n  correlation_id: prepared.correlation_id,\n  triage,\n  response_preparation: preparation,\n  chatwoot_request: { content: lines.filter((line, index) => line || index > 0).join('\\n').slice(0, 12000), message_type: 'outgoing', private: true },\n} }];\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2080,
+        2340,
         40
       ],
       "id": "asset002-prepare-review-note",
@@ -398,102 +395,22 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.3,
       "position": [
-        2340,
+        2600,
         40
       ],
       "id": "asset002-create-private-note",
       "name": "Create Chatwoot Private Note",
       "notesInFlow": true,
       "notes": "Creates a private internal note only. This node never sends a public customer message.",
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE asset002_audit.message_processing\nSET status = 'completed', triage_json = $2::jsonb, response_preparation_json = $3::jsonb, updated_at = now()\nWHERE idempotency_key = $1\nRETURNING correlation_id, status;",
-        "options": {
-          "queryReplacement": "={{ [$('Execute Prepare Message').first().json.idempotency_key, JSON.stringify($('Execute AI Triage').first().json.triage), JSON.stringify($('Execute Response Preparation').first().json.response_preparation)] }}"
-        }
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        2600,
-        40
-      ],
-      "id": "asset002-complete-audit",
-      "name": "Complete Processing Audit",
-      "credentials": {
-        "postgres": {
-          "id": "asset001-audit-postgres",
-          "name": "ASSET001 Audit PostgreSQL"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE asset002_audit.message_processing\nSET status = 'failed', error_code = 'chatwoot_private_note_failed', updated_at = now()\nWHERE idempotency_key = $1\nRETURNING correlation_id, status, error_code;",
-        "options": {
-          "queryReplacement": "={{ [$('Execute Prepare Message').first().json.idempotency_key] }}"
-        }
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        2600,
-        180
-      ],
-      "id": "asset002-fail-audit",
-      "name": "Record Processing Failure",
-      "credentials": {
-        "postgres": {
-          "id": "asset001-audit-postgres",
-          "name": "ASSET001 Audit PostgreSQL"
-        }
-      }
+      "onError": "stopWorkflow"
     },
     {
       "parameters": {},
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1040,
-        180
-      ],
-      "id": "asset002-duplicate-event",
-      "name": "Duplicate Event Ignored"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO asset002_audit.agent_deliveries (account_id, conversation_id, message_id, delivered_at, agent_action, final_response)\nVALUES ($1::bigint, $2::bigint, $3::bigint, COALESCE($4::timestamptz, now()), 'agent_public_reply', $5)\nON CONFLICT (message_id) DO NOTHING\nRETURNING message_id;",
-        "options": {
-          "queryReplacement": "={{ [$json.support_event.account_id, $json.support_event.conversation_id, $json.support_event.message_id, $json.support_event.occurred_at, $json.support_event.message] }}"
-        }
-      },
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        1040,
+        1300,
         300
-      ],
-      "id": "asset002-record-delivery",
-      "name": "Record Agent Delivery",
-      "credentials": {
-        "postgres": {
-          "id": "asset001-audit-postgres",
-          "name": "ASSET001 Audit PostgreSQL"
-        }
-      }
-    },
-    {
-      "parameters": {},
-      "type": "n8n-nodes-base.noOp",
-      "typeVersion": 1,
-      "position": [
-        1040,
-        420
       ],
       "id": "asset002-ignored-event",
       "name": "Ignored Chatwoot Event"
@@ -503,8 +420,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        1040,
-        540
+        1300,
+        500
       ],
       "id": "asset002-invalid-event",
       "name": "Invalid Event Rejected"
@@ -515,7 +432,25 @@
       "main": [
         [
           {
+            "node": "Automation Webhook Authorized?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Automation Webhook Authorized?": {
+      "main": [
+        [
+          {
             "node": "Execute Prepare Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unauthorized Automation Webhook",
             "type": "main",
             "index": 0
           }
@@ -538,20 +473,6 @@
         [
           {
             "node": "Fetch Chatwoot Conversation History",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Duplicate Event Ignored",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Record Agent Delivery",
             "type": "main",
             "index": 0
           }
@@ -621,24 +542,6 @@
         [
           {
             "node": "Create Chatwoot Private Note",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Create Chatwoot Private Note": {
-      "main": [
-        [
-          {
-            "node": "Complete Processing Audit",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Record Processing Failure",
             "type": "main",
             "index": 0
           }

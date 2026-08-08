@@ -24,7 +24,6 @@ return [{ json: {
     ...triage,
     route: requiresPriorityReview ? 'priority_review' : 'standard_review',
     requires_human_review: true,
-    safe_for_drafting: !requiresPriorityReview,
     reason_codes: forcedReasons.length ? forcedReasons : ['standard_agent_review'],
   },
   validation: input.triage_validation,

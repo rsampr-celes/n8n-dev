@@ -1,7 +1,7 @@
-const claim = $('Execute Prepare Message').first().json;
+const prepared = $('Execute Prepare Message').first().json;
 const response = $input.first()?.json ?? {};
 const messages = Array.isArray(response.payload) ? response.payload : [];
-const currentMessageId = claim.support_event.message_id;
+const currentMessageId = prepared.support_event.message_id;
 
 const conversationContext = messages
   .filter((message) => message && message.private !== true && String(message.id ?? '') !== currentMessageId)
@@ -15,4 +15,4 @@ const conversationContext = messages
   }))
   .filter((message) => message.content);
 
-return [{ json: { support_event: claim.support_event, conversation_context: conversationContext } }];
+return [{ json: { support_event: prepared.support_event, conversation_context: conversationContext } }];

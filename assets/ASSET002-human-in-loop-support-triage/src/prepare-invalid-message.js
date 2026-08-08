@@ -8,8 +8,6 @@ return [{
     route: 'invalid',
     support_event: null,
     correlation_id: null,
-    idempotency_key: null,
-    idempotency: { action: 'not_applicable', should_process: false },
     validation,
   },
 }];

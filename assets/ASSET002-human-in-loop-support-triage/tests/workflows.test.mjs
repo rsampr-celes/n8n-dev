@@ -59,6 +59,36 @@ test('normalization accepts an incoming Chatwoot event and removes undeclared da
   });
 });
 
+test('normalization accepts a filtered Chatwoot automation payload', () => {
+  const normalize = code(prepareWorkflow, 'Normalize Chatwoot Event');
+  const result = normalize(input({ raw_event: { body: {
+    event: 'automation_event.message_created', id: 42, inbox_id: 3,
+    channel: 'Channel::WebWidget', account: { id: 7 },
+    messages: [{
+      id: 91, account_id: 7, inbox_id: 3, conversation_id: 42,
+      message_type: 0, content: '  Automation message  ', created_at: 1786071600,
+      sender: { name: 'Automation Customer', email: 'CUSTOMER@EXAMPLE.COM' },
+    }],
+  } } }), () => {}, require)[0].json;
+
+  assert.deepEqual(result, {
+    event_kind: 'incoming_customer_message', event_name: 'automation_event.message_created',
+    conversation_id: '42', message_id: '91', inbox_id: '3', account_id: '7',
+    channel: 'Channel::WebWidget', message: 'Automation message',
+    sender_name: 'Automation Customer', sender_email: 'customer@example.com',
+    occurred_at: '2026-08-07T03:00:00.000Z',
+  });
+});
+
+test('normalization ignores public outgoing agent messages', () => {
+  const normalize = code(prepareWorkflow, 'Normalize Chatwoot Event');
+  const result = normalize(input({ raw_event: { body: {
+    event: 'message_created', id: 82, message_type: 'outgoing', content: 'Agent reply',
+    private: false, account: { id: 7 }, conversation: { id: 42 },
+  } } }), () => {}, require)[0].json;
+  assert.equal(result.event_kind, 'ignored');
+});
+
 test('validation rejects a malformed external event without echoing its message', () => {
   const validate = code(prepareWorkflow, 'Validate Support Event');
   const result = validate(input({ event_kind: 'incoming_customer_message', conversation_id: null, message_id: null, account_id: null, message: 'private submitted text' }), () => {}, require)[0].json;
@@ -66,6 +96,23 @@ test('validation rejects a malformed external event without echoing its message'
   assert.equal(result.support_event, null);
   assert.ok(result.validation.errors.some((error) => error.field === 'conversation_id'));
   assert.doesNotMatch(JSON.stringify(result.validation.errors), /private submitted text/);
+});
+
+test('incoming preparation creates a fresh correlation ID without idempotency state', () => {
+  const prepare = code(prepareWorkflow, 'Prepare Incoming Message');
+  const item = { support_event: { message_id: '81' }, validation: { is_valid: true, errors: [] } };
+  const first = prepare(input(item), () => {}, require)[0].json;
+  const second = prepare(input(item), () => {}, require)[0].json;
+  assert.equal(first.route, 'incoming_customer_message');
+  assert.notEqual(first.correlation_id, second.correlation_id);
+  assert.equal(Object.hasOwn(first, 'idempotency_key'), false);
+  assert.equal(Object.hasOwn(first, 'idempotency'), false);
+});
+
+test('ASSET002 has no processing-audit or PostgreSQL dependency', () => {
+  assert.equal(main.nodes.some((node) => node.type === 'n8n-nodes-base.postgres'), false);
+  assert.doesNotMatch(JSON.stringify([main, prepareWorkflow]), /asset002_audit|Start Processing Audit|Complete Processing Audit|Record Processing Failure/i);
+  assert.doesNotMatch(JSON.stringify([main, prepareWorkflow]), /idempotency|incoming_duplicate|Duplicate Event Ignored/i);
 });
 
 test('deterministic routing sends low-confidence and sensitive output to priority review', () => {
@@ -79,18 +126,30 @@ test('deterministic routing sends low-confidence and sensitive output to priorit
     },
   }), () => {}, require)[0].json;
   assert.equal(result.triage.route, 'priority_review');
-  assert.equal(result.triage.safe_for_drafting, false);
+  assert.equal(Object.hasOwn(result.triage, 'safe_for_drafting'), false);
   assert.deepEqual(result.triage.reason_codes, ['low_triage_confidence', 'sensitive_subject']);
 });
 
-test('invalid AI triage output fails safely with no drafting', () => {
+test('invalid AI triage output falls back to specialist review', () => {
   const validate = code(triageWorkflow, 'Validate Triage Response');
   const route = code(triageWorkflow, 'Apply Deterministic Triage Routing');
-  const checked = validate(input({ workflow_input: {}, provider_content: '{bad json' }), () => {}, require)[0].json;
+  const checked = validate(input({ choices: [{ message: { content: '{bad json' } }] }), () => {}, require)[0].json;
   const result = route(input(checked), () => {}, require)[0].json;
   assert.equal(result.triage.assigned_team, 'specialist_review');
-  assert.equal(result.triage.safe_for_drafting, false);
+  assert.equal(Object.hasOwn(result.triage, 'safe_for_drafting'), false);
   assert.equal(result.triage.reason_codes[0], 'invalid_ai_output');
+});
+
+test('response preparation accepts priority-review triage without a drafting gate', () => {
+  const validate = code(responseWorkflow, 'Validate Response Input');
+  const result = validate(input({
+    support_event: { message: 'Please cancel my account.' },
+    triage: { category: 'cancellation_refund', summary: 'Cancellation request.', route: 'priority_review' },
+    conversation_context: [],
+  }), () => {}, require)[0].json;
+  assert.equal(result.validation.is_valid, true);
+  assert.equal(Object.hasOwn(result, 'should_search'), false);
+  assert.match(findNode(responseWorkflow, 'Response Input Valid?').parameters.conditions.conditions[0].leftValue, /validation\.is_valid/);
 });
 
 test('knowledge selection uses approved rows only and emits a minimal source contract', () => {
@@ -117,14 +176,15 @@ test('grounded response rejects source identifiers that were not retrieved', () 
   assert.ok(result.validation.errors.some((error) => error.code === 'unsupported_source'));
 });
 
-test('Prepare Message owns normalization, validation, and idempotency before main-flow AI', () => {
+test('Prepare Message owns normalization, validation, and event preparation before main-flow AI', () => {
   assert.equal(main.nodes.some((node) => node.name === 'Normalize Chatwoot Event'), false);
   assert.equal(main.nodes.some((node) => node.name === 'Validate Support Event'), false);
   assert.equal(main.nodes.some((node) => node.name === 'Claim Message Processing'), false);
   assert.equal(prepareWorkflow.connections['Normalize Chatwoot Event'].main[0][0].node, 'Validate Support Event');
-  assert.equal(prepareWorkflow.connections['Prepare Idempotency Claim'].main[0][0].node, 'Claim Message Processing');
-  assert.equal(prepareWorkflow.connections['Claim Message Processing'].main[0][0].node, 'Attach Idempotency Result');
-  assert.equal(findNode(prepareWorkflow, 'Claim Message Processing').credentials.postgres.name, 'ASSET001 Audit PostgreSQL');
+  assert.equal(prepareWorkflow.connections['Route Event Kind'].main[0][0].node, 'Prepare Incoming Message');
+  assert.equal(prepareWorkflow.connections['Route Event Kind'].main[1][0].node, 'Prepare Ignored Event');
+  assert.equal(prepareWorkflow.connections['Route Event Kind'].main.length, 2);
+  assert.equal(prepareWorkflow.nodes.some((node) => /Idempotency|Claim Message/.test(node.name)), false);
 });
 
 test('main flow is orchestration-only and creates only a private Chatwoot note', () => {
@@ -132,13 +192,18 @@ test('main flow is orchestration-only and creates only a private Chatwoot note',
   assert.match(note.parameters.body, /chatwoot_request/);
   assert.match(note.notes, /private internal note/i);
   assert.equal(main.nodes.some((node) => /Send.*Customer|Public Reply/i.test(node.name)), false);
-  assert.equal(main.connections['Chatwoot Webhook'].main[0][0].node, 'Execute Prepare Message');
+  assert.equal(main.connections['Chatwoot Webhook'].main[0][0].node, 'Automation Webhook Authorized?');
+  assert.equal(main.connections['Automation Webhook Authorized?'].main[0][0].node, 'Execute Prepare Message');
+  assert.equal(main.connections['Automation Webhook Authorized?'].main[1][0].node, 'Unauthorized Automation Webhook');
+  assert.match(findNode(main, 'Automation Webhook Authorized?').parameters.conditions.conditions[0].leftValue, /CHATWOOT_AUTOMATION_WEBHOOK_TOKEN/);
   assert.equal(main.connections['Execute Prepare Message'].main[0][0].node, 'Route Prepared Message');
   assert.equal(main.connections['Route Prepared Message'].main[0][0].node, 'Fetch Chatwoot Conversation History');
   assert.equal(main.connections['Prepare Conversation Context'].main[0][0].node, 'Execute AI Triage');
-  assert.equal(main.connections['Route Prepared Message'].main[1][0].node, 'Duplicate Event Ignored');
-  assert.equal(findNode(main, 'Create Chatwoot Private Note').onError, 'continueErrorOutput');
-  assert.equal(main.connections['Create Chatwoot Private Note'].main[1][0].node, 'Record Processing Failure');
+  assert.equal(main.nodes.some((node) => node.name === 'Duplicate Event Ignored'), false);
+  assert.equal(main.nodes.some((node) => node.name === 'Record Agent Delivery'), false);
+  assert.doesNotMatch(JSON.stringify([main, prepareWorkflow]), /agent_deliveries|agent_public_message/i);
+  assert.equal(findNode(main, 'Create Chatwoot Private Note').onError, 'stopWorkflow');
+  assert.equal(Object.hasOwn(main.connections, 'Create Chatwoot Private Note'), false);
 });
 
 test('conversation history adapter excludes private and current messages and bounds context', () => {
@@ -160,8 +225,16 @@ test('both AI calls use strict schemas and trusted fixed model defaults', () => 
   assert.match(responseBuild, /gpt-5-mini/);
   assert.match(triageBuild, /strict: true/);
   assert.match(responseBuild, /strict: true/);
+  assert.doesNotMatch(triageBuild, /uniqueItems|minLength|maxLength/);
+  assert.doesNotMatch(responseBuild, /uniqueItems|minLength|maxLength/);
   assert.equal(findNode(triageWorkflow, 'Invoke Triage AI').credentials.openAiApi.name, 'OpenAI account');
   assert.equal(findNode(responseWorkflow, 'Invoke Response AI').credentials.openAiApi.name, 'OpenAI account');
-  assert.equal(findNode(triageWorkflow, 'Invoke Triage AI').onError, 'continueRegularOutput');
-  assert.equal(findNode(responseWorkflow, 'Invoke Response AI').onError, 'continueRegularOutput');
+  assert.equal(findNode(triageWorkflow, 'Invoke Triage AI').onError, 'stopWorkflow');
+  assert.equal(findNode(responseWorkflow, 'Invoke Response AI').onError, 'stopWorkflow');
+});
+
+test('triage validates the provider response directly without an attachment node', () => {
+  assert.equal(triageWorkflow.nodes.some((node) => node.name === 'Attach Triage Provider Response'), false);
+  assert.equal(triageWorkflow.connections['Invoke Triage AI'].main[0][0].node, 'Validate Triage Response');
+  assert.doesNotMatch(findNode(triageWorkflow, 'Validate Triage Response').parameters.jsCode, /workflow_input/);
 });

@@ -1,8 +1,9 @@
-const input = $input.first().json;
+const response = $input.first()?.json ?? {};
+const providerContent = response.choices?.[0]?.message?.content ?? null;
 const errors = [];
 let value = null;
 try {
-  value = typeof input.provider_content === 'string' ? JSON.parse(input.provider_content) : null;
+  value = typeof providerContent === 'string' ? JSON.parse(providerContent) : null;
 } catch {
   errors.push({ field: 'provider_content', code: 'invalid_json' });
 }
@@ -25,6 +26,8 @@ if (!value || typeof value !== 'object' || Array.isArray(value)) {
   const allowedFlags = ['personal_data', 'security', 'legal_compliance', 'financial_exception', 'harmful_content'];
   if (!Array.isArray(value.sensitivity_flags) || value.sensitivity_flags.some((flag) => !allowedFlags.includes(flag))) {
     errors.push({ field: 'sensitivity_flags', code: 'invalid_items' });
+  } else if (value.sensitivity_flags.length > 5 || new Set(value.sensitivity_flags).size !== value.sensitivity_flags.length) {
+    errors.push({ field: 'sensitivity_flags', code: 'invalid_cardinality' });
   }
   if (typeof value.confidence !== 'number' || value.confidence < 0 || value.confidence > 1) errors.push({ field: 'confidence', code: 'out_of_range' });
   if (typeof value.summary !== 'string' || !value.summary.trim() || value.summary.length > 500) errors.push({ field: 'summary', code: 'invalid_length' });
@@ -33,4 +36,4 @@ if (!value || typeof value !== 'object' || Array.isArray(value)) {
   for (const key of Object.keys(value)) if (!allowedKeys.has(key)) errors.push({ field: key, code: 'undeclared_property' });
 }
 
-return [{ json: { workflow_input: input.workflow_input, triage_candidate: errors.length ? null : value, triage_validation: { is_valid: errors.length === 0, errors } } }];
+return [{ json: { triage_candidate: errors.length ? null : value, triage_validation: { is_valid: errors.length === 0, errors } } }];

@@ -1,0 +1,688 @@
+[
+  {
+    "updatedAt": "2026-08-07T02:16:18.885Z",
+    "createdAt": "2026-07-31T10:10:00.001Z",
+    "id": "ASSET002Main01",
+    "name": "ASSET002 - Human-in-the-Loop Support Triage",
+    "description": null,
+    "active": true,
+    "isArchived": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "asset002-chatwoot-events",
+          "responseMode": "onReceived",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          260,
+          300
+        ],
+        "id": "asset002-chatwoot-webhook",
+        "name": "Chatwoot Webhook",
+        "webhookId": "2d22b8a9-9b56-49d9-9d69-asset0020001"
+      },
+      {
+        "parameters": {
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "value": "ASSET002PrepareMessage01",
+            "mode": "id"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "raw_event": "={{ $json }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "raw_event",
+                "displayName": "raw_event",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "object"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "mode": "once",
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.3,
+        "position": [
+          520,
+          300
+        ],
+        "id": "asset002-execute-prepare-message",
+        "name": "Execute Prepare Message"
+      },
+      {
+        "parameters": {
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "asset002-route-prepared-message-incoming_customer_message",
+                      "leftValue": "={{ $json.route }}",
+                      "rightValue": "incoming_customer_message",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "incoming_customer_message"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "asset002-route-prepared-message-agent_public_message",
+                      "leftValue": "={{ $json.route }}",
+                      "rightValue": "agent_public_message",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "agent_public_message"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "asset002-route-prepared-message-ignored",
+                      "leftValue": "={{ $json.route }}",
+                      "rightValue": "ignored",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "ignored"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "leftValue": "",
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "conditions": [
+                    {
+                      "id": "asset002-route-prepared-message-invalid",
+                      "leftValue": "={{ $json.route }}",
+                      "rightValue": "invalid",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals"
+                      }
+                    }
+                  ],
+                  "combinator": "and"
+                },
+                "renameOutput": true,
+                "outputKey": "invalid"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          780,
+          300
+        ],
+        "id": "asset002-route-prepared-message",
+        "name": "Route Prepared Message"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO asset002_audit.message_processing\n  (correlation_id, account_id, conversation_id, message_id, event_kind, status)\nVALUES ($1::uuid, $2::bigint, $3::bigint, $4::bigint, $5, 'processing')\nRETURNING correlation_id, status;",
+          "options": {
+            "queryReplacement": "={{ [$json.correlation_id, $json.support_event.account_id, $json.support_event.conversation_id, $json.support_event.message_id, $json.support_event.event_kind] }}"
+          }
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1040,
+          40
+        ],
+        "id": "asset002-start-audit",
+        "name": "Start Processing Audit",
+        "credentials": {
+          "postgres": {
+            "id": "asset001-audit-postgres",
+            "name": "ASSET001 Audit PostgreSQL"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $env.CHATWOOT_BASE_URL + '/api/v1/accounts/' + $('Execute Prepare Message').first().json.support_event.account_id + '/conversations/' + $('Execute Prepare Message').first().json.support_event.conversation_id + '/messages' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "api_access_token",
+                "value": "={{ $env.CHATWOOT_API_ACCESS_TOKEN }}"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [
+          1300,
+          40
+        ],
+        "id": "asset002-fetch-history",
+        "name": "Fetch Chatwoot Conversation History",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const prepared = $('Execute Prepare Message').first().json;\nconst response = $input.first()?.json ?? {};\nconst messages = Array.isArray(response.payload) ? response.payload : [];\nconst currentMessageId = prepared.support_event.message_id;\n\nconst conversationContext = messages\n  .filter((message) => message && message.private !== true && String(message.id ?? '') !== currentMessageId)\n  .filter((message) => message.message_type === 0 || message.message_type === 1 || message.message_type === 'incoming' || message.message_type === 'outgoing')\n  .slice(-10)\n  .map((message) => ({\n    role: message.message_type === 1 || message.message_type === 'outgoing' ? 'agent' : 'customer',\n    content: typeof message.content === 'string'\n      ? message.content.replace(/\\u0000/g, '').replace(/\\r\\n?/g, '\\n').trim().slice(0, 2000)\n      : '',\n  }))\n  .filter((message) => message.content);\n\nreturn [{ json: { support_event: prepared.support_event, conversation_context: conversationContext } }];\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1560,
+          40
+        ],
+        "id": "asset002-prepare-context",
+        "name": "Prepare Conversation Context"
+      },
+      {
+        "parameters": {
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "value": "ASSET002AITriage01",
+            "mode": "id"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "support_event": "={{ $json.support_event }}",
+              "conversation_context": "={{ $json.conversation_context }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "support_event",
+                "displayName": "support_event",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "object"
+              },
+              {
+                "id": "conversation_context",
+                "displayName": "conversation_context",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "array"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "mode": "once",
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.3,
+        "position": [
+          1820,
+          40
+        ],
+        "id": "asset002-execute-triage",
+        "name": "Execute AI Triage"
+      },
+      {
+        "parameters": {
+          "source": "database",
+          "workflowId": {
+            "__rl": true,
+            "value": "ASSET002ResponsePreparation01",
+            "mode": "id"
+          },
+          "workflowInputs": {
+            "mappingMode": "defineBelow",
+            "value": {
+              "support_event": "={{ $('Prepare Conversation Context').first().json.support_event }}",
+              "triage": "={{ $json.triage }}",
+              "conversation_context": "={{ $('Prepare Conversation Context').first().json.conversation_context }}"
+            },
+            "matchingColumns": [],
+            "schema": [
+              {
+                "id": "support_event",
+                "displayName": "support_event",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "object"
+              },
+              {
+                "id": "triage",
+                "displayName": "triage",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "object"
+              },
+              {
+                "id": "conversation_context",
+                "displayName": "conversation_context",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "canBeUsedToMatch": true,
+                "type": "array"
+              }
+            ],
+            "attemptToConvertTypes": false,
+            "convertFieldsToString": false
+          },
+          "mode": "once",
+          "options": {
+            "waitForSubWorkflow": true
+          }
+        },
+        "type": "n8n-nodes-base.executeWorkflow",
+        "typeVersion": 1.3,
+        "position": [
+          2080,
+          40
+        ],
+        "id": "asset002-execute-response",
+        "name": "Execute Response Preparation"
+      },
+      {
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "const prepared = $('Execute Prepare Message').first().json;\nconst triage = $('Execute AI Triage').first().json.triage;\nconst preparation = $input.first().json.response_preparation;\nconst lines = [\n  'AI support triage — internal review only',\n  `Correlation: ${prepared.correlation_id}`,\n  `Category: ${triage.category}`,\n  `Intent: ${triage.intent}`,\n  `Urgency: ${triage.urgency}`,\n  `Sentiment: ${triage.sentiment}`,\n  `Assigned team: ${triage.assigned_team}`,\n  `Triage confidence: ${triage.confidence}`,\n  `Route: ${triage.route}`,\n  `Reasons: ${triage.reason_codes.join(', ')}`,\n  `Summary: ${triage.summary}`,\n  '',\n  preparation.status === 'draft_ready' ? 'Proposed response:' : 'No response draft was produced. Manual handling is required.',\n  preparation.proposed_response ?? '',\n  preparation.sources.length ? `Sources: ${preparation.sources.map((source) => `${source.knowledge_id} — ${source.title}`).join('; ')}` : 'Sources: none',\n  `Response confidence: ${preparation.confidence}`,\n  `Recommended action: ${preparation.recommended_agent_action}`,\n  'An authorised agent must review and send any customer-facing response.',\n];\n\nreturn [{ json: {\n  account_id: prepared.support_event.account_id,\n  conversation_id: prepared.support_event.conversation_id,\n  correlation_id: prepared.correlation_id,\n  triage,\n  response_preparation: preparation,\n  chatwoot_request: { content: lines.filter((line, index) => line || index > 0).join('\\n').slice(0, 12000), message_type: 'outgoing', private: true },\n} }];\n"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2340,
+          40
+        ],
+        "id": "asset002-prepare-review-note",
+        "name": "Prepare Chatwoot Review Note"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $env.CHATWOOT_BASE_URL + '/api/v1/accounts/' + $json.account_id + '/conversations/' + $json.conversation_id + '/messages' }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "api_access_token",
+                "value": "={{ $env.CHATWOOT_API_ACCESS_TOKEN }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "contentType": "raw",
+          "rawContentType": "application/json",
+          "body": "={{ JSON.stringify($json.chatwoot_request) }}",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.3,
+        "position": [
+          2600,
+          40
+        ],
+        "id": "asset002-create-private-note",
+        "name": "Create Chatwoot Private Note",
+        "notesInFlow": true,
+        "notes": "Creates a private internal note only. This node never sends a public customer message.",
+        "onError": "continueErrorOutput"
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE asset002_audit.message_processing\nSET status = 'completed', triage_json = $2::jsonb, response_preparation_json = $3::jsonb, updated_at = now()\nWHERE correlation_id = $1::uuid\nRETURNING correlation_id, status;",
+          "options": {
+            "queryReplacement": "={{ [$('Execute Prepare Message').first().json.correlation_id, JSON.stringify($('Execute AI Triage').first().json.triage), JSON.stringify($('Execute Response Preparation').first().json.response_preparation)] }}"
+          }
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2860,
+          40
+        ],
+        "id": "asset002-complete-audit",
+        "name": "Complete Processing Audit",
+        "credentials": {
+          "postgres": {
+            "id": "asset001-audit-postgres",
+            "name": "ASSET001 Audit PostgreSQL"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE asset002_audit.message_processing\nSET status = 'failed', error_code = 'chatwoot_private_note_failed', updated_at = now()\nWHERE correlation_id = $1::uuid\nRETURNING correlation_id, status, error_code;",
+          "options": {
+            "queryReplacement": "={{ [$('Execute Prepare Message').first().json.correlation_id] }}"
+          }
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          2860,
+          180
+        ],
+        "id": "asset002-fail-audit",
+        "name": "Record Processing Failure",
+        "credentials": {
+          "postgres": {
+            "id": "asset001-audit-postgres",
+            "name": "ASSET001 Audit PostgreSQL"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "INSERT INTO asset002_audit.agent_deliveries (account_id, conversation_id, message_id, delivered_at, agent_action, final_response)\nVALUES ($1::bigint, $2::bigint, $3::bigint, COALESCE($4::timestamptz, now()), 'agent_public_reply', $5)\nON CONFLICT (message_id) DO NOTHING\nRETURNING message_id;",
+          "options": {
+            "queryReplacement": "={{ [$json.support_event.account_id, $json.support_event.conversation_id, $json.support_event.message_id, $json.support_event.occurred_at, $json.support_event.message] }}"
+          }
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.6,
+        "position": [
+          1040,
+          260
+        ],
+        "id": "asset002-record-delivery",
+        "name": "Record Agent Delivery",
+        "credentials": {
+          "postgres": {
+            "id": "asset001-audit-postgres",
+            "name": "ASSET001 Audit PostgreSQL"
+          }
+        }
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          1040,
+          400
+        ],
+        "id": "asset002-ignored-event",
+        "name": "Ignored Chatwoot Event"
+      },
+      {
+        "parameters": {},
+        "type": "n8n-nodes-base.noOp",
+        "typeVersion": 1,
+        "position": [
+          1040,
+          540
+        ],
+        "id": "asset002-invalid-event",
+        "name": "Invalid Event Rejected"
+      }
+    ],
+    "connections": {
+      "Chatwoot Webhook": {
+        "main": [
+          [
+            {
+              "node": "Execute Prepare Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Prepare Message": {
+        "main": [
+          [
+            {
+              "node": "Route Prepared Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route Prepared Message": {
+        "main": [
+          [
+            {
+              "node": "Start Processing Audit",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Record Agent Delivery",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Ignored Chatwoot Event",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Invalid Event Rejected",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Start Processing Audit": {
+        "main": [
+          [
+            {
+              "node": "Fetch Chatwoot Conversation History",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Chatwoot Conversation History": {
+        "main": [
+          [
+            {
+              "node": "Prepare Conversation Context",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Conversation Context": {
+        "main": [
+          [
+            {
+              "node": "Execute AI Triage",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute AI Triage": {
+        "main": [
+          [
+            {
+              "node": "Execute Response Preparation",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Execute Response Preparation": {
+        "main": [
+          [
+            {
+              "node": "Prepare Chatwoot Review Note",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare Chatwoot Review Note": {
+        "main": [
+          [
+            {
+              "node": "Create Chatwoot Private Note",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Create Chatwoot Private Note": {
+        "main": [
+          [
+            {
+              "node": "Complete Processing Audit",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Record Processing Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1",
+      "timezone": "Europe/Kiev"
+    },
+    "staticData": null,
+    "meta": {
+      "templateCredsSetupCompleted": true
+    },
+    "nodeGroups": [],
+    "pinData": {},
+    "versionId": "6220745e-61b8-4c3b-8704-af12cf90a980",
+    "activeVersionId": "6220745e-61b8-4c3b-8704-af12cf90a980",
+    "versionCounter": 4,
+    "triggerCount": 1,
+    "sourceWorkflowId": null,
+    "tags": [],
+    "shared": [
+      {
+        "updatedAt": "2026-07-31T10:10:00.001Z",
+        "createdAt": "2026-07-31T10:10:00.001Z",
+        "role": "workflow:owner",
+        "workflowId": "ASSET002Main01",
+        "projectId": "4rZFyLIS08DeykZq",
+        "project": {
+          "updatedAt": "2026-07-26T12:26:49.590Z",
+          "createdAt": "2026-07-26T12:24:36.374Z",
+          "id": "4rZFyLIS08DeykZq",
+          "name": "Sam Rajarathinam <sam.rajarathinam@celes7a.com>",
+          "type": "personal",
+          "icon": null,
+          "description": null,
+          "customTelemetryTags": [],
+          "creatorId": "e0ee685d-6492-4345-abf6-5a8b5c2bbb1b"
+        }
+      }
+    ],
+    "versionMetadata": {
+      "name": null,
+      "description": null
+    }
+  }
+]

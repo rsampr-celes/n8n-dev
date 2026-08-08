@@ -9,7 +9,7 @@ return $input.all().map((item, index) => {
   for (const key of Object.keys(value)) {
     if (!ALLOWED_FIELDS.has(key)) errors.push({ field: key, code: 'undeclared_property' });
   }
-  if (!['incoming_customer_message', 'agent_public_message', 'ignored'].includes(value.event_kind)) {
+  if (!['incoming_customer_message', 'ignored'].includes(value.event_kind)) {
     errors.push({ field: 'event_kind', code: 'invalid_enum' });
   }
   if (value.event_kind !== 'ignored') {
