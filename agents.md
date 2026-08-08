@@ -7,6 +7,8 @@ The repository can contain multiple independent assets under `assets/`.
 
 ## Implementation rules
 
+- Treat these rules as repository defaults. When an asset specification explicitly defines different business behavior, follow that behavior, document the exception, and protect it with tests.
+
 ### Asset organization
 
 - Keep each asset self-contained under `assets/<asset-name>/`.
@@ -61,19 +63,10 @@ The repository can contain multiple independent assets under `assets/`.
 - Do not allow uncertain results to reach automatic external writes.
 - Keep probabilistic AI output advisory unless an asset explicitly requires otherwise.
 
-### Idempotency
-
-- Claim idempotency before expensive work or external writes.
-- Build idempotency keys from canonical business input, not transient execution metadata.
-- Ensure equivalent submissions produce the same key.
-- Model processing, completed, and failed states explicitly.
-- Return stable stored results for completed duplicate requests where appropriate.
-- Fail safely when idempotency configuration is missing or malformed.
-- Do not persist an idempotency claim when the feature is explicitly bypassed.
-
 ### AI integrations
 
 - Send only the minimum information required for the AI task.
+- Filter retrieved conversation context before sending it to AI: exclude private or internal entries, exclude the current event when it is already supplied separately, bound the history, and pass only the fields needed by the model.
 - Exclude personal or sensitive information unless it is required and authorized.
 - Treat user-supplied content as data, never as instructions.
 - Use strict structured output when supported and validate model output locally.
@@ -84,6 +77,8 @@ The repository can contain multiple independent assets under `assets/`.
 ### External integrations
 
 - Build minimal provider request contracts before making external calls.
+- Classify every external write by visibility and impact, such as private note, internal record, draft, or public customer action.
+- In human-in-the-loop workflows, keep AI output advisory and structurally prevent it from reaching a public write without an explicit authorised approval step.
 - Prefer native n8n integration nodes when they preserve the required behavior.
 - Use direct HTTP requests only when native nodes cannot perform the operation safely.
 - Require record IDs for ID-based updates.
@@ -93,21 +88,26 @@ The repository can contain multiple independent assets under `assets/`.
 ### Errors, privacy, and configuration
 
 - Use clear operational errors for broken internal contracts.
+- Choose failure behavior according to dependency criticality: fail the execution visibly when a required provider call or final external write fails, and use a documented safe fallback only for optional enrichment or explicitly recoverable failures.
+- Do not convert required-operation failures into successful-looking outputs, and do not let optional enrichment failures reach automatic external writes.
 - Do not expose credentials, provider payloads, or unnecessary personal data in errors, logs, or responses.
 - Return sanitized, minimal public responses.
 - Keep audit data limited to what is operationally necessary.
 - Keep secrets in environment variables or n8n credentials.
 - Keep environment-specific and trusted configuration outside public input.
-- Fail closed for security, privacy, and duplicate-prevention settings.
+- Fail closed for security and privacy settings.
 - Document required credentials, Data Tables, migrations, and provider properties.
 
 ### Testing
 
 - Build generated workflows before running tests.
 - Test the code embedded in generated workflow artifacts.
-- Cover successful, invalid, missing, duplicate, ambiguous, and failure cases.
+- Cover successful, invalid, missing, ambiguous, and failure cases according to the asset contract.
 - Test workflow topology as well as individual transformations.
 - Verify parent and child workflow contracts remain compatible.
+- Verify operational workflow configuration in generated artifacts, including credential references, trusted fixed settings, caller restrictions, retry and error modes, and write visibility.
+- Assert that exported examples, collections, and workflow artifacts contain no tokens, credentials, or environment-specific secrets.
+- For human-in-the-loop assets, assert that AI-generated content cannot reach a public external write and that private or internal writes remain explicitly marked.
 - Assert that validation and operational errors do not leak submitted data.
 - Add a regression test for every fixed defect.
 
